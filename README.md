@@ -18,9 +18,9 @@
   </a>
 </p>
 
-<!--Welcome to **Boring.Notch**, the coolest way to make your MacBook's notch the star of the show! Forget about those boring status bars—our notch turns into a dynamic music control center, complete with a snazzy visualizer and all the music controls you need. It's like having a mini concert right at the top of your screen! -->
+This repository is a branch of the original **Boring Notch** by **The Boring Team**. It keeps the core design, interaction model, and overall feel of the original project in place, while adding a few features that make the app more complete without turning it into something heavier or more complicated.
 
-Say hello to **Boring Notch**, the coolest way to make your MacBook’s notch the star of the show! Say goodbye to boring status bars: with Boring Notch, your notch transforms into a dynamic music control center, complete with a vibrant visualizer and all the essential music controls you need. But that’s just the start! Boring Notch also offers calendar integration, a handy file shelf with AirDrop support, a complete MacOS HUD replacement and more!
+The focus of this branch is straightforward: preserve the original experience, keep performance responsive, keep battery usage low, and add practical improvements that fit naturally into the notch UI.
 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/2d5f69c1-6e7b-4bc2-a6f1-bb9e27cf88a8" alt="Demo GIF" />
@@ -38,6 +38,37 @@ Say hello to **Boring Notch**, the coolest way to make your MacBook’s notch th
 - [Star History](#star-history)
 - [Buy us a coffee!](#buy-us-a-coffee)
 - [Acknowledgments](#-acknowledgments)-->
+
+## What This Branch Adds
+
+In addition to the original Boring Notch feature set, this branch includes a few focused improvements designed to stay aligned with the existing app architecture and visual design.
+
+### Bluetooth Headphone Indicator
+
+Shows a short closed-notch animation when Bluetooth headphones become the active audio output on macOS.
+
+Details:
+- Triggers when devices like AirPods or other Bluetooth headphones are selected as the current output device.
+- Uses Bluetooth device matching to show a more accurate profile or icon when possible.
+- Avoids showing the animation for every Bluetooth event and only reacts to active audio output changes.
+
+### Timer and Stopwatch Support
+
+Adds a built-in timer and stopwatch inside the notch so users can start and manage time-based activities without opening another app.
+
+Details:
+- Lets users switch between timer and stopwatch modes from the Activities tab.
+- Shows active time sessions directly in the notch, including when the notch is closed.
+- Supports timer adjustments with `Option` + two-finger horizontal swipe, plus configurable sensitivity and direction settings.
+
+### Multi-Space Navigation With Two-Finger Gestures
+
+Adds support for moving between notch tabs while using multiple macOS Spaces, using two-finger horizontal swipe gestures when the notch is open.
+
+Details:
+- Allows navigation between Home, Activities, and Shelf with horizontal trackpad gestures.
+- Includes settings for gesture enablement, direction inversion, and sensitivity.
+- Keeps gesture navigation separate from normal tab interactions so switching tabs feels more consistent across Spaces.
 
 ## Installation
 
@@ -187,5 +218,4 @@ For a full list of licenses and attributions, please see the [Third-Party Licens
 
 - **SwiftUI**: For making us look like coding wizards.
 - **You**: For being awesome and checking out **boring.notch**!
-
 
