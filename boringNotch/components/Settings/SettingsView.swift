@@ -134,7 +134,7 @@ struct SettingsView: View {
 
 struct ClockSettings: View {
     @Default(.timerDefaultMinutes) private var defaultTimerMinutes
-    @Default(.timerThreeFingerAdjustment) private var threeFingerAdjustment
+    @Default(.timerOptionSwipeAdjustment) private var optionSwipeAdjustment
     @Default(.timerSwipeSensitivity) private var timerSwipeSensitivity
 
     var body: some View {
@@ -162,11 +162,11 @@ struct ClockSettings: View {
                     Text("Play a sound when the timer finishes")
                 }
 
-                Defaults.Toggle(key: .timerThreeFingerAdjustment) {
-                    Text("Adjust duration with a three-finger swipe")
+                Defaults.Toggle(key: .timerOptionSwipeAdjustment) {
+                    Text("Adjust duration with Option + two-finger swipe")
                 }
 
-                if threeFingerAdjustment {
+                if optionSwipeAdjustment {
                     Slider(value: $timerSwipeSensitivity, in: 8...32, step: 2) {
                         HStack {
                             Text("Swipe sensitivity")
@@ -179,7 +179,7 @@ struct ClockSettings: View {
             } header: {
                 Text("Timer")
             } footer: {
-                Text("Move three fingers horizontally over the timer ruler. This gesture is kept separate from the two-finger tab navigation gesture.")
+                Text("Hold Option and move two fingers horizontally over the timer ruler. Option keeps this separate from tab navigation.")
                     .foregroundStyle(.secondary)
             }
 

@@ -2111,7 +2111,7 @@
         }
       }
     },
-    "Adjust duration with a three-finger swipe" : {
+    "Adjust duration with Option + two-finger swipe" : {
 
     },
     "Advanced" : {
@@ -14055,7 +14055,7 @@
         }
       }
     },
-    "Move three fingers horizontally over the timer ruler. This gesture is kept separate from the two-finger tab navigation gesture." : {
+    "Hold Option and move two fingers horizontally over the timer ruler. Option keeps this separate from tab navigation." : {
 
     },
     "Music Source" : {
@@ -21111,7 +21111,7 @@
         }
       }
     },
-    "Swipe horizontally with three fingers to adjust the timer" : {
+    "Hold Option and swipe horizontally with two fingers to adjust the timer" : {
 
     },
     "Swipe horizontally with two fingers to move between Home, Activities, and Shelf. When direction is inverted, swiping right to left opens the tab on the right." : {

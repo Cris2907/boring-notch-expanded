@@ -13,7 +13,7 @@ struct TimeActivityView: View {
     @ObservedObject private var webcamManager = WebcamManager.shared
 
     @Default(.timerDefaultMinutes) private var defaultTimerMinutes
-    @Default(.timerThreeFingerAdjustment) private var timerThreeFingerAdjustment
+    @Default(.timerOptionSwipeAdjustment) private var timerOptionSwipeAdjustment
     @Default(.timerSwipeSensitivity) private var timerSwipeSensitivity
     @Default(.stopwatchShowCentiseconds) private var stopwatchShowCentiseconds
 
@@ -109,14 +109,14 @@ struct TimeActivityView: View {
             }
         }
         .contentShape(Rectangle())
-        .threeFingerHorizontalTrackpadSwipe(
-            isEnabled: selectedKind == .timer && timerThreeFingerAdjustment
+        .optionHorizontalTrackpadSwipe(
+            isEnabled: selectedKind == .timer && timerOptionSwipeAdjustment
         ) { delta, phase in
             handleTimerSwipe(delta: delta, phase: phase)
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Timer duration selector")
-        .accessibilityHint("Swipe horizontally with three fingers to adjust the timer")
+        .accessibilityHint("Hold Option and swipe horizontally with two fingers to adjust the timer")
         .accessibilityAdjustableAction { direction in
             switch direction {
             case .increment:

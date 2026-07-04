@@ -115,14 +115,14 @@ extension View {
         )
     }
 
-    /// Handles a horizontal trackpad gesture only when exactly three fingers are
-    /// touching the trackpad, leaving existing one- and two-finger gestures alone.
-    func threeFingerHorizontalTrackpadSwipe(
+    /// Handles precise horizontal scrolling only while Option is held. This keeps
+    /// the gesture separate from normal two-finger tab navigation.
+    func optionHorizontalTrackpadSwipe(
         isEnabled: Bool,
         action: @escaping (CGFloat, NSEvent.Phase) -> Void
     ) -> some View {
         background(
-            ThreeFingerHorizontalTrackpadSwipeMonitor(
+            OptionHorizontalTrackpadSwipeMonitor(
                 isEnabled: isEnabled,
                 action: action
             )
@@ -130,14 +130,12 @@ extension View {
     }
 }
 
-private struct ThreeFingerHorizontalTrackpadSwipeMonitor: NSViewRepresentable {
+private struct OptionHorizontalTrackpadSwipeMonitor: NSViewRepresentable {
     let isEnabled: Bool
     let action: (CGFloat, NSEvent.Phase) -> Void
 
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
-        view.allowedTouchTypes = [.indirect]
-        view.wantsRestingTouches = true
         context.coordinator.installMonitor(on: view)
         return view
     }
@@ -159,11 +157,8 @@ private struct ThreeFingerHorizontalTrackpadSwipeMonitor: NSViewRepresentable {
         private var action: (CGFloat, NSEvent.Phase) -> Void
         private var monitor: Any?
         private weak var monitoredView: NSView?
-        private var isTrackingTouches = false
-        private var hasRecognizedHorizontalSwipe = false
-        private var hasRejectedSwipe = false
-        private var initialCentroid: CGPoint?
-        private var previousCentroid: CGPoint?
+        private var endTask: Task<Void, Never>?
+        private var isTracking = false
 
         init(
             isEnabled: Bool,
@@ -178,7 +173,7 @@ private struct ThreeFingerHorizontalTrackpadSwipeMonitor: NSViewRepresentable {
             action: @escaping (CGFloat, NSEvent.Phase) -> Void
         ) {
             if self.isEnabled && !isEnabled {
-                finishGesture(cancelled: true)
+                finishGesture(phase: .cancelled)
             }
             self.isEnabled = isEnabled
             self.action = action
@@ -187,11 +182,9 @@ private struct ThreeFingerHorizontalTrackpadSwipeMonitor: NSViewRepresentable {
         func installMonitor(on view: NSView) {
             removeMonitor()
             monitoredView = view
-            monitor = NSEvent.addLocalMonitorForEvents(
-                matching: [.gesture, .beginGesture, .endGesture, .swipe]
-            ) { [weak self] event in
-                self?.handleGestureEvent(event)
-                return event
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+                guard let self else { return event }
+                return self.handleScroll(event) ? nil : event
             }
         }
 
@@ -200,132 +193,66 @@ private struct ThreeFingerHorizontalTrackpadSwipeMonitor: NSViewRepresentable {
                 NSEvent.removeMonitor(monitor)
                 self.monitor = nil
             }
-            finishGesture(cancelled: true)
+            finishGesture(phase: .cancelled)
             monitoredView = nil
         }
 
-        private func handleGestureEvent(_ event: NSEvent) {
+        private func handleScroll(_ event: NSEvent) -> Bool {
             guard let view = monitoredView,
                   event.window === view.window
-            else { return }
+            else { return false }
+
+            if event.phase == .ended || event.phase == .cancelled || event.momentumPhase == .ended {
+                let wasTracking = isTracking
+                finishGesture(phase: event.phase == .cancelled ? .cancelled : .ended)
+                return wasTracking
+            }
+
+            let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            guard isEnabled,
+                  modifiers.contains(.option),
+                  event.hasPreciseScrollingDeltas,
+                  event.momentumPhase.isEmpty
+            else { return false }
 
             let location = view.convert(event.locationInWindow, from: nil)
-            guard view.bounds.contains(location) else {
-                finishGesture(cancelled: true)
-                return
-            }
+            guard view.bounds.contains(location) else { return false }
 
-            if event.type == .swipe {
-                handleSystemSwipe(event)
-                return
-            }
+            let absDX = abs(event.scrollingDeltaX)
+            let absDY = abs(event.scrollingDeltaY)
+            guard absDX >= 1.5 * absDY, absDX > 0.2 else { return false }
 
-            if event.type == .endGesture {
-                finishGesture(cancelled: false)
-                return
-            }
-
-            if event.type == .beginGesture {
-                finishGesture(cancelled: true)
-                return
-            }
-
-            guard isEnabled, event.type == .gesture else { return }
-
-            updateTracking(with: event)
-        }
-
-        private func handleSystemSwipe(_ event: NSEvent) {
-            guard isEnabled, event.deltaX != 0 else { return }
-
-            // macOS may promote a three-finger trackpad gesture to a discrete
-            // swipe event before raw touch movement reaches the application.
-            // Feed that discrete movement through the same ruler sensitivity.
-            finishGesture(cancelled: true)
-            TrackpadGestureRouting.shared.isThreeFingerGestureActive = true
-            action(0, .began)
-            action(event.deltaX.sign == .minus ? -18 : 18, .changed)
-            action(0, .ended)
-            TrackpadGestureRouting.shared.isThreeFingerGestureActive = false
-        }
-
-        private func updateTracking(with event: NSEvent) {
-            let touches = event.touches(matching: .touching, in: nil)
-            guard touches.count == 3 else {
-                if isTrackingTouches {
-                    finishGesture(cancelled: true)
-                }
-                return
-            }
-
-            let sum = touches.reduce(CGPoint.zero) { partialResult, touch in
-                CGPoint(
-                    x: partialResult.x + touch.normalizedPosition.x,
-                    y: partialResult.y + touch.normalizedPosition.y
-                )
-            }
-            let centroid = CGPoint(
-                x: sum.x / CGFloat(touches.count),
-                y: sum.y / CGFloat(touches.count)
-            )
-
-            if !isTrackingTouches {
-                isTrackingTouches = true
-                initialCentroid = centroid
-                previousCentroid = centroid
-                return
-            }
-
-            guard !hasRejectedSwipe,
-                  let initialCentroid,
-                  let previousCentroid
-            else { return }
-
-            if !hasRecognizedHorizontalSwipe {
-                let totalX = abs(centroid.x - initialCentroid.x)
-                let totalY = abs(centroid.y - initialCentroid.y)
-                guard max(totalX, totalY) >= 0.01 else { return }
-                guard totalX >= 1.5 * totalY else {
-                    hasRejectedSwipe = true
-                    return
-                }
-                hasRecognizedHorizontalSwipe = true
-                TrackpadGestureRouting.shared.isThreeFingerGestureActive = true
+            if !isTracking {
+                isTracking = true
                 action(0, .began)
             }
 
-            let delta = (centroid.x - previousCentroid.x) * max(viewWidth, 1)
-            self.previousCentroid = centroid
-            guard abs(delta) > 0.1 else { return }
-            action(delta, .changed)
+            let physicalDelta = event.isDirectionInvertedFromDevice
+                ? -event.scrollingDeltaX
+                : event.scrollingDeltaX
+            action(physicalDelta, .changed)
+            scheduleEndTimeout()
+            return true
         }
 
-        private var viewWidth: CGFloat {
-            monitoredView?.bounds.width ?? 0
-        }
-
-        private func finishGesture(cancelled: Bool) {
-            if hasRecognizedHorizontalSwipe {
-                action(0, cancelled ? .cancelled : .ended)
+        private func scheduleEndTimeout() {
+            endTask?.cancel()
+            endTask = Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(250))
+                guard !Task.isCancelled else { return }
+                finishGesture(phase: .ended)
             }
-            TrackpadGestureRouting.shared.isThreeFingerGestureActive = false
-            resetTracking()
         }
 
-        private func resetTracking() {
-            isTrackingTouches = false
-            hasRecognizedHorizontalSwipe = false
-            hasRejectedSwipe = false
-            initialCentroid = nil
-            previousCentroid = nil
+        private func finishGesture(phase: NSEvent.Phase) {
+            endTask?.cancel()
+            endTask = nil
+            if isTracking {
+                action(0, phase)
+            }
+            isTracking = false
         }
     }
-}
-
-@MainActor
-private final class TrackpadGestureRouting {
-    static let shared = TrackpadGestureRouting()
-    var isThreeFingerGestureActive = false
 }
 
 private struct HorizontalTrackpadSwipeMonitor: NSViewRepresentable {
@@ -415,9 +342,9 @@ private struct HorizontalTrackpadSwipeMonitor: NSViewRepresentable {
                   event.momentumPhase.isEmpty
             else { return }
 
-            // Three-finger horizontal gestures are reserved for controls inside
-            // the current tab (for example, the timer ruler).
-            guard !TrackpadGestureRouting.shared.isThreeFingerGestureActive else { return }
+            // Option + horizontal scroll is reserved for controls inside the
+            // current tab (for example, the timer ruler).
+            guard !event.modifierFlags.contains(.option) else { return }
 
             if event.phase == .began {
                 accumulator.reset()
