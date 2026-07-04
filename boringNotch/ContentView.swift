@@ -77,7 +77,11 @@ struct ContentView: View {
         } else if clockShowInClosedNotch && timeActivityManager.hasSession
             && vm.notchState == .closed && !vm.hideOnClosed
         {
-            chinWidth += 176
+            chinWidth += (
+                max(0, vm.effectiveClosedNotchHeight - 12)
+                    + closedTimeActivityMinimumTextWidth
+                    + 20
+            )
         } else if !coordinator.expandingView.show && vm.notchState == .closed
             && (!musicManager.isPlaying && musicManager.isPlayerIdle) && Defaults[.showNotHumanFace]
             && !vm.hideOnClosed

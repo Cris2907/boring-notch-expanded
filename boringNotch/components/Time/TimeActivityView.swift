@@ -419,13 +419,7 @@ struct ClosedTimeActivityView: View {
 
     var body: some View {
         TimelineView(.animation(minimumInterval: updateInterval)) { timeline in
-            Group {
-                if showMedia {
-                    mediaAndTimeActivity(at: timeline.date)
-                } else {
-                    timeActivity(at: timeline.date)
-                }
-            }
+            compactActivity(at: timeline.date)
             .frame(height: vm.effectiveClosedNotchHeight)
             .accessibilityElement(children: .combine)
             .accessibilityLabel(closedAccessibilityLabel(at: timeline.date))
@@ -436,13 +430,13 @@ struct ClosedTimeActivityView: View {
         max(0, vm.effectiveClosedNotchHeight - 12)
     }
 
-    private func mediaAndTimeActivity(at date: Date) -> some View {
+    private func compactActivity(at date: Date) -> some View {
         HStack(spacing: 8) {
             leftActivity(at: date)
                 .frame(width: mediaAccessoryWidth, alignment: .trailing)
                 .contentShape(Rectangle())
                 .onHover { hovering in
-                    if hovering {
+                    if hovering && showMedia {
                         coordinator.currentView = .home
                     }
                 }
@@ -451,28 +445,23 @@ struct ClosedTimeActivityView: View {
                 .fill(.black)
                 .frame(width: max(0, vm.closedNotchSize.width - cornerRadiusInsets.closed.top))
 
-            compactTimeActivity(at: date)
-                .frame(width: mediaAccessoryWidth, alignment: .center)
-                .contentShape(Rectangle())
-                .onHover { hovering in
-                    if hovering {
-                        coordinator.currentView = .activities
-                    }
+            Group {
+                if showMedia {
+                    compactTimeActivity(at: date)
+                        .frame(width: mediaAccessoryWidth, alignment: .center)
+                } else {
+                    compactTimeActivity(at: date)
+                        .padding(.leading, 8)
+                        .fixedSize(horizontal: true, vertical: false)
+                        .frame(minWidth: closedTimeActivityMinimumTextWidth, alignment: .leading)
                 }
-        }
-    }
-
-    private func timeActivity(at date: Date) -> some View {
-        HStack(spacing: 8) {
-            leftActivity(at: date)
-                .frame(width: 88, alignment: .trailing)
-
-            Rectangle()
-                .fill(.black)
-                .frame(width: max(0, vm.closedNotchSize.width - 20))
-
-            rightActivity(at: date)
-                .frame(width: 88, alignment: .leading)
+            }
+            .contentShape(Rectangle())
+            .onHover { hovering in
+                if hovering && showMedia {
+                    coordinator.currentView = .activities
+                }
+            }
         }
     }
 
@@ -497,57 +486,16 @@ struct ClosedTimeActivityView: View {
     }
 
     @ViewBuilder
-    private func rightActivity(at date: Date) -> some View {
-        Group {
-            if let snapshot = manager.snapshot {
-                if snapshot.phase == .finished {
-                    Text("Done")
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.orange)
-                } else if snapshot.kind == .timer {
-                    if showMedia {
-                        HStack(spacing: 5) {
-                            TimeProgressRing(snapshot: snapshot, date: date)
-                            Text(TimeActivityFormatter.timer(snapshot.remaining(at: date)))
-                                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                                .monospacedDigit()
-                                .foregroundStyle(.orange)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.7)
-                        }
-                    } else {
-                        Text(TimeActivityFormatter.timer(snapshot.remaining(at: date)))
-                            .font(.system(size: 14, weight: .semibold, design: .rounded))
-                            .monospacedDigit()
-                            .foregroundStyle(.orange)
-                            .contentTransition(.numericText())
-                    }
-                } else {
-                    if showMedia {
-                        HStack(spacing: 5) {
-                            Image(systemName: "stopwatch.fill")
-                            Text(TimeActivityFormatter.stopwatch(snapshot.elapsed(at: date), includesCentiseconds: false))
-                                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                                .monospacedDigit()
-                        }
-                        .foregroundStyle(.orange)
-                    } else {
-                        Text(TimeActivityFormatter.stopwatch(snapshot.elapsed(at: date), includesCentiseconds: false))
-                            .font(.system(size: 14, weight: .semibold, design: .rounded))
-                            .monospacedDigit()
-                            .foregroundStyle(.orange)
-                            .contentTransition(.numericText())
-                    }
-                }
-            }
-        }
-        .accessibilityLabel("Time activity")
-    }
-
-    @ViewBuilder
     private func compactTimeActivity(at date: Date) -> some View {
         if let snapshot = manager.snapshot {
-            if snapshot.phase == .finished {
+            if !showMedia {
+                Text(compactText(for: snapshot, at: date))
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(.orange)
+                    .lineLimit(1)
+                    .contentTransition(.numericText())
+            } else if snapshot.phase == .finished {
                 Image(systemName: "timer")
                     .foregroundStyle(.orange)
             } else if snapshot.kind == .timer {
@@ -565,7 +513,7 @@ struct ClosedTimeActivityView: View {
     }
 
     private func compactText(for snapshot: TimeActivitySnapshot, at date: Date) -> String {
-        if snapshot.phase == .finished { return "Timer Done" }
+        if snapshot.phase == .finished { return "Done" }
         if snapshot.kind == .timer {
             return TimeActivityFormatter.timer(snapshot.remaining(at: date))
         }
