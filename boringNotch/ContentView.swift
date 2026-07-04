@@ -79,7 +79,7 @@ struct ContentView: View {
         {
             chinWidth += (
                 max(0, vm.effectiveClosedNotchHeight - 12)
-                    + closedTimeActivityTextWidth
+                    + closedTimeActivityMinimumTextWidth
                     + 20
             )
         } else if !coordinator.expandingView.show && vm.notchState == .closed

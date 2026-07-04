@@ -445,17 +445,22 @@ struct ClosedTimeActivityView: View {
                 .fill(.black)
                 .frame(width: max(0, vm.closedNotchSize.width - cornerRadiusInsets.closed.top))
 
-            compactTimeActivity(at: date)
-                .frame(
-                    width: showMedia ? mediaAccessoryWidth : closedTimeActivityTextWidth,
-                    alignment: showMedia ? .center : .leading
-                )
-                .contentShape(Rectangle())
-                .onHover { hovering in
-                    if hovering && showMedia {
-                        coordinator.currentView = .activities
-                    }
+            Group {
+                if showMedia {
+                    compactTimeActivity(at: date)
+                        .frame(width: mediaAccessoryWidth, alignment: .center)
+                } else {
+                    compactTimeActivity(at: date)
+                        .fixedSize(horizontal: true, vertical: false)
+                        .frame(minWidth: closedTimeActivityMinimumTextWidth, alignment: .leading)
                 }
+            }
+            .contentShape(Rectangle())
+            .onHover { hovering in
+                if hovering && showMedia {
+                    coordinator.currentView = .activities
+                }
+            }
         }
     }
 
@@ -488,7 +493,6 @@ struct ClosedTimeActivityView: View {
                     .monospacedDigit()
                     .foregroundStyle(.orange)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.7)
                     .contentTransition(.numericText())
             } else if snapshot.phase == .finished {
                 Image(systemName: "timer")
