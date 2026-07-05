@@ -8,7 +8,6 @@
 
 
 <p align="center">
-  <a title="Crowdin" target="_blank" href="https://crowdin.com/project/boring-notch"><img src="https://badges.crowdin.net/boring-notch/localized.svg"></a>
   <img src="https://github.com/TheBoredTeam/boring.notch/actions/workflows/cicd.yml/badge.svg" alt="TheBoringNotch Build & Test" style="margin-right: 10px;" />
 </p>
 
@@ -81,10 +80,10 @@ Details:
 
 <a href="https://github.com/TheBoredTeam/boring.notch/releases/latest/download/boringNotch.dmg" target="_self"><img width="200" src="https://github.com/user-attachments/assets/e3179be1-8416-4b8a-b417-743e1ecc67d6" alt="Download for macOS" /></a>
 
-Once downloaded, open the `.dmg` and move **Boring Notch** to your `/Applications` folder.
+Once downloaded, open the `.dmg` and move **Not So Boring Notch** to your `/Applications` folder.
 
 > [!IMPORTANT]
-> We don't have an Apple Developer account (yet 👀), so macOS will warn you that Boring Notch is from an unidentified developer on first launch. This is expected behavior.
+> We don't have an Apple Developer account (yet 👀), so macOS will warn you that Not So Boring Notch is from an unidentified developer on first launch. This is expected behavior.
 >
 > You'll need to bypass this before the app will open. You only need to do this once. Use one of the methods below.
 
@@ -94,10 +93,10 @@ Once downloaded, open the `.dmg` and move **Boring Notch** to your `/Application
 
 This is the quickest and easiest method. It only requires a single command and works consistently for all users. System Settings can sometimes fail and won't work for non-admin users.
 
-After moving Boring Notch to your Applications folder, run:
+After moving Not So Boring Notch to your Applications folder, run:
 
 ```bash
-xattr -dr com.apple.quarantine /Applications/boringNotch.app
+xattr -dr com.apple.quarantine /Applications/NotSoBoringNotch.app
 ```
 
 Then open the app normally.
