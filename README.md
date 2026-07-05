@@ -10,9 +10,6 @@
 <p align="center">
   <a title="Crowdin" target="_blank" href="https://crowdin.com/project/boring-notch"><img src="https://badges.crowdin.net/boring-notch/localized.svg"></a>
   <img src="https://github.com/TheBoredTeam/boring.notch/actions/workflows/cicd.yml/badge.svg" alt="TheBoringNotch Build & Test" style="margin-right: 10px;" />
-  <a href="https://discord.gg/c8JXA7qrPm">
-    <img src="https://dcbadge.limes.pink/api/server/https://discord.gg/c8JXA7qrPm?style=flat" alt="Discord Badge" />
-  </a>
 </p>
 
 This repository is a branch of the original **Boring Notch** by **The Boring Team**. It keeps the core design, interaction model, and overall feel of the original project in place, while adding a few features that make the app more complete without turning it into something heavier or more complicated.
@@ -28,11 +25,7 @@ The focus of this branch is straightforward: preserve the original experience, k
 <!--## Table of Contents
 - [Installation](#installation)
 - [Usage](#usage)
-- [Roadmap](#-roadmap)
 - [Building from Source](#building-from-source)
-- [Contributing](#-contributing)
-- [Join our Discord Server](#join-our-discord-server)
-- [Star History](#star-history)
 - [Special Thanks](#-special-thanks)-->
 
 ## What This Branch Adds
@@ -122,16 +115,6 @@ Then open the app normally.
 4. Scroll to the bottom and click **Open Anyway** next to the Boring Notch warning.
 5. Confirm if prompted.
 
----
-
-### Option 2: Install via Homebrew
-
-You can also install using [Homebrew](https://brew.sh). The Homebrew installation automatically bypasses the macOS security warning described above.
-
-```bash
-brew install --cask TheBoredTeam/boring-notch/boring-notch
-```
-
 ## Usage
 
 - Launch the app, and voilà—your notch is now the coolest part of your screen.
@@ -139,31 +122,6 @@ brew install --cask TheBoredTeam/boring-notch/boring-notch
 - When the closed clock or music live activity is visible, hovering that activity opens the related expanded space so you can jump straight into timers or playback controls.
 - Use the controls to manage your music like a rockstar.
 - Click the star in your menu bar to customize your notch to your heart's content.
-
-## 📋 Roadmap
-- [x] Playback live activity 🎧
-- [x] Calendar integration 📆
-- [x] Reminders integration ☑️
-- [x] Mirror 📷
-- [x] Charging indicator and current percentage 🔋
-- [x] Customizable gesture control 👆🏻
-- [x] Shelf functionality with AirDrop 📚
-- [x] Notch sizing customization, finetuning on different display sizes 🖥️
-- [x] System HUD replacements (volume, brightness, backlight) 🎚️💡⌨️
-- [ ] Bluetooth Live Activity (connect/disconnect for bluetooth devices) 
-- [ ] Weather integration ⛅️
-- [ ] Customizable Layout options 🛠️
-- [ ] Lock Screen Widgets 🔒
-- [ ] Extension system 🧩
-- [ ] Notifications (under consideration) 🔔
-<!-- - [ ] Clipboard history manager 📌 `Extension` -->
-<!-- - [ ] Download indicator of different browsers (Safari, Chromium browsers, Firefox) 🌍 `Extension`-->
-<!-- - [ ] Customizable function buttons 🎛️ -->
-<!-- - [ ] App switcher 🪄 -->
-
-<!-- ## 🧩 Extensions
-> [!NOTE]
-> We’re hard at work on some awesome extensions! Stay tuned, and we’ll keep you updated as soon as they’re released. -->
 
 ## Building from Source
 
@@ -187,24 +145,6 @@ brew install --cask TheBoredTeam/boring-notch/boring-notch
 
 3. **Build and Run**:
     - Click the "Run" button or press `Cmd + R`. Watch the magic unfold!
-
-## 🤝 Contributing
-
-We’re all about good vibes and awesome contributions! Read [CONTRIBUTING.md](CONTRIBUTING.md) to learn how you can join the fun!
-
-## Join our Discord Server
-
-<a href="https://discord.gg/GvYcYpAKTu" target="_blank"><img src="https://iili.io/28m3GHv.png" alt="Join The Boring Server!" style="height: 60px !important;width: 217px !important;" ></a>
-
-## Star History
-
-<a href="https://www.star-history.com/#TheBoredTeam/boring.notch&Timeline">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=TheBoredTeam/boring.notch&type=Timeline&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=TheBoredTeam/boring.notch&type=Timeline" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=TheBoredTeam/boring.notch&type=Timeline" />
- </picture>
-</a>
 
 ## 🎉 Special Thanks
 
