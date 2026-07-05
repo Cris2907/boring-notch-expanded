@@ -8,7 +8,7 @@
 
 
 <p align="center">
-  <img src="https://github.com/TheBoredTeam/boring.notch/actions/workflows/cicd.yml/badge.svg" alt="TheBoringNotch Build & Test" style="margin-right: 10px;" />
+  <img src="https://github.com/Cris2907/not-so-boring-notch/actions/workflows/cicd.yml/badge.svg" alt="TheBoringNotch Build & Test" style="margin-right: 10px;" />
 </p>
 
 This repository is a branch of the original **Boring Notch** by **The Boring Team**. It keeps the core design, interaction model, and overall feel of the original project in place, while adding a few features that make the app more complete without turning it into something heavier or more complicated.
@@ -78,7 +78,7 @@ Details:
 
 ### Option 1: Download and Install Manually
 
-<a href="https://github.com/TheBoredTeam/boring.notch/releases/latest/download/boringNotch.dmg" target="_self"><img width="200" src="https://github.com/user-attachments/assets/e3179be1-8416-4b8a-b417-743e1ecc67d6" alt="Download for macOS" /></a>
+<a href="https://github.com/Cris2907/not-so-boring-notch/releases/latest/download/boringNotch.dmg" target="_self"><img width="200" src="https://github.com/user-attachments/assets/e3179be1-8416-4b8a-b417-743e1ecc67d6" alt="Download for macOS" /></a>
 
 Once downloaded, open the `.dmg` and move **Not So Boring Notch** to your `/Applications` folder.
 
@@ -133,7 +133,7 @@ Then open the app normally.
 
 1. **Clone the Repository**:
    ```bash
-   git clone https://github.com/TheBoredTeam/boring.notch.git
+   git clone https://github.com/Cris2907/not-so-boring-notch.git
    cd boring.notch
    ```
 
@@ -158,7 +158,3 @@ We would like to express our gratitude to the authors and maintainers of the ope
 For a full list of licenses and attributions, please see the [Third-Party Licenses](./THIRD_PARTY_LICENSES.md) file.
 
 ### Icon credits: [@maxtron95](https://github.com/maxtron95)
-### Website credits: [@himanshhhhuv](https://github.com/himanshhhhuv)
-
-- **SwiftUI**: For making us look like coding wizards.
-- **You**: For being awesome and checking out **boring.notch**!
