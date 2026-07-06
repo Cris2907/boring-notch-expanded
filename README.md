@@ -12,7 +12,6 @@
 </p>
 
 
-
 https://github.com/user-attachments/assets/547144cc-1b9a-48b7-af9b-3816fa0ab8e9
 
 
@@ -21,9 +20,7 @@ This repository is a branch of the original **Boring Notch** by **The Boring Tea
 
 The focus of this branch is straightforward: preserve the original experience, keep performance responsive, keep battery usage low, and add practical improvements that fit naturally into the notch UI.
 
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/2d5f69c1-6e7b-4bc2-a6f1-bb9e27cf88a8" alt="Demo GIF" />
-</p>
+
 
 <!--https://github.com/user-attachments/assets/19b87973-4b3a-4853-b532-7e82d1d6b040-->
 ---
@@ -38,8 +35,10 @@ The focus of this branch is straightforward: preserve the original experience, k
 In addition to the original Boring Notch feature set, this branch includes a few focused improvements designed to stay aligned with the existing app architecture and visual design.
 
 ### Bluetooth Headphone Indicator
-
 Shows a short closed-notch animation when Bluetooth headphones become the active audio output on macOS.
+
+
+<img width="572" height="57" alt="image" src="https://github.com/user-attachments/assets/f7a9a48b-b099-4676-ab75-f04c888f3f0f" />
 
 Details:
 - Triggers when devices like AirPods or other Bluetooth headphones are selected as the current output device.
@@ -47,8 +46,11 @@ Details:
 - Avoids showing the animation for every Bluetooth event and only reacts to active audio output changes.
 
 ### Timer and Stopwatch Support
-
 Adds a built-in timer and stopwatch inside the notch so users can start and manage time-based activities without opening another app.
+
+
+<img width="640" height="190" alt="image" src="https://github.com/user-attachments/assets/3a9a2107-6122-41a6-965c-d3c516fadd8a" />
+
 
 Details:
 - Lets users switch between timer and stopwatch modes from the Activities tab.
@@ -56,8 +58,11 @@ Details:
 - Supports timer adjustments with `Option` + two-finger horizontal swipe, plus configurable sensitivity and direction settings.
 
 ### Standalone Calendar Tab
-
 Moves Calendar into its own tab instead of displaying it beside the music controls.
+
+
+<img width="640" height="210" alt="image" src="https://github.com/user-attachments/assets/3599fcad-b5f8-4388-b2bf-479bf9324d00" />
+
 
 Details:
 - Uses a two-column layout with a complete month grid and the selected day's events and reminders.
@@ -84,7 +89,8 @@ Details:
 
 ### Option 1: Download and Install Manually
 
-<a href="https://github.com/Cris2907/not-so-boring-notch/releases/latest/download/boringNotch.dmg" target="_self"><img width="200" src="https://github.com/user-attachments/assets/e3179be1-8416-4b8a-b417-743e1ecc67d6" alt="Download for macOS" /></a>
+
+<a href="https://github.com/Cris2907/not-so-boring-notch/releases" target="_self"><img width="200" src="https://github.com/user-attachments/assets/e3179be1-8416-4b8a-b417-743e1ecc67d6" alt="Download for macOS" /></a>
 
 Once downloaded, open the `.dmg` and move **Not So Boring Notch** to your `/Applications` folder.
 
