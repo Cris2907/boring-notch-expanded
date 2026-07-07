@@ -1,5 +1,4 @@
 import Combine
-import Defaults
 import SwiftUI
 import XCTest
 @testable import boringNotch
@@ -389,182 +388,203 @@ final class ActivityArchitectureTests: XCTestCase {
         XCTAssertEqual(calendar.metadata.preferredExpandedHeight, calendarOpenNotchHeight)
         XCTAssertTrue(calendar.supportsConfiguration)
         XCTAssertFalse(calendar.supportsCompactPresentation)
+        XCTAssertEqual(calendar.livePresentationState, .hidden)
     }
 
-    func testCalendarLiveEligibilityRequiresAnInProgressTimedEvent() {
-        let now = Date(timeIntervalSince1970: 10_000)
-        let manager = CalendarManager(
-            currentDate: now,
-            observesEventStoreChanges: false,
-            loadsInitialData: false
-        )
-        let activity = CalendarActivity(
-            manager: manager,
-            now: { now },
-            schedulesBoundaryUpdates: false
-        )
-
-        manager.events = [makeCalendarEvent(start: now.addingTimeInterval(60), end: now.addingTimeInterval(120))]
-        XCTAssertEqual(activity.livePresentationState, .hidden)
-
-        manager.events = [makeCalendarEvent(start: now.addingTimeInterval(-60), end: now.addingTimeInterval(60), isAllDay: true)]
-        XCTAssertEqual(activity.livePresentationState, .hidden)
-
-        manager.events = [makeCalendarEvent(start: now.addingTimeInterval(-60), end: now.addingTimeInterval(60), type: .reminder(completed: false))]
-        XCTAssertEqual(activity.livePresentationState, .hidden)
-
-        manager.events = [makeCalendarEvent(start: now.addingTimeInterval(-60), end: now.addingTimeInterval(60))]
-        XCTAssertEqual(activity.livePresentationState, .visible(priority: .normal))
-        let _: AnyView = AnyView(activity.makeLivePresentationView())
-        let _: AnyView = AnyView(activity.makeMinimalLivePresentationView())
-
-        manager.events = [makeCalendarEvent(start: now.addingTimeInterval(-120), end: now)]
-        XCTAssertEqual(activity.livePresentationState, .hidden)
-    }
-
-    func testCalendarLiveSelectorUsesCurrentEventAndExactNextBoundary() throws {
-        let now = Date(timeIntervalSince1970: 10_000)
-        let current = makeCalendarEvent(
-            id: "current",
-            start: now.addingTimeInterval(-30),
-            end: now.addingTimeInterval(30)
-        )
-        let newerOverlap = makeCalendarEvent(
-            id: "newer-overlap",
-            start: now.addingTimeInterval(-10),
-            end: now.addingTimeInterval(20)
-        )
-        let upcoming = makeCalendarEvent(
-            id: "upcoming",
-            start: now.addingTimeInterval(10),
-            end: now.addingTimeInterval(40)
+    func testTimerAndMediaAdaptersRemainOutsideOpenNotchNavigation() throws {
+        let registry = try ActivityRegistry {
+            TestActivity(id: "registered", name: "Registered")
+        }
+        let time = LiveTestProvider(id: .time)
+        let media = LiveTestProvider(id: .media)
+        let liveRegistry = LiveActivityPresentationProviderRegistry(
+            activityRegistry: registry,
+            additionalProviders: [
+                AnyLiveActivityPresentationProvider(time),
+                AnyLiveActivityPresentationProvider(media)
+            ]
         )
 
+        XCTAssertEqual(registry.availableActivityIDs, [ActivityID("registered")])
         XCTAssertEqual(
-            CalendarLiveEventSelector.select(from: [current, newerOverlap, upcoming], at: now)?.id,
-            newerOverlap.id
+            liveRegistry.providers.map(\.id),
+            [ActivityID("registered"), .time, .media]
         )
         XCTAssertEqual(
-            try XCTUnwrap(
-                CalendarLiveEventSelector.nextBoundary(
-                    in: [current, newerOverlap, upcoming],
-                    after: now
-                )
+            visibleNotchViews(
+                availableActivityIDs: registry.availableActivityIDs,
+                includesShelf: false
             ),
-            upcoming.start
+            [.home, .activity(ActivityID("registered")), .activities]
         )
     }
 
-    func testProductionPomodoroAndCalendarShareLivePresentationStack() async throws {
-        let originalShowCalendar = Defaults[.showCalendar]
-        Defaults[.showCalendar] = true
-        defer { Defaults[.showCalendar] = originalShowCalendar }
-
-        let now = Date(timeIntervalSince1970: 10_000)
-        let calendarManager = CalendarManager(
-            currentDate: now,
-            observesEventStoreChanges: false,
-            loadsInitialData: false
-        )
-        let calendar = CalendarActivity(
-            manager: calendarManager,
-            now: { now },
-            schedulesBoundaryUpdates: false
-        )
-        let suiteName = "ActivityArchitectureTests.\(UUID().uuidString)"
+    func testUnifiedProvidersUseOneRecencyAndPromotionFlow() async throws {
+        let now = Date(timeIntervalSince1970: 20_000)
+        let suiteName = "UnifiedLiveProviders.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
+
         let pomodoroManager = PomodoroManager(
             defaults: defaults,
             now: { now },
             configuration: { .standard },
             managesBackgroundExecution: false
         )
-        let registry = try ActivityRegistry {
-            calendar
+        let timeManager = TimeActivityManager(
+            defaults: defaults,
+            now: { now },
+            observeLifecycle: false,
+            playCompletionSound: {}
+        )
+        let media = LiveTestProvider(id: .media)
+        let activityRegistry = try ActivityRegistry {
             PomodoroActivity(manager: pomodoroManager)
         }
-        let coordinator = ActivityLivePresentationCoordinator(registry: registry)
-
-        XCTAssertEqual(registry.availableActivityIDs, [.calendar, .pomodoro])
-
-        calendarManager.events = [
-            makeCalendarEvent(
-                start: now.addingTimeInterval(-60),
-                end: now.addingTimeInterval(60)
-            )
-        ]
-        await coordinator.waitForPendingReconciliation()
-        assertStack(
-            selectedActivityLivePresentationStack(
-                from: registry.activities,
-                snapshot: coordinator.snapshot
-            ),
-            contains: [.calendar]
+        let liveRegistry = LiveActivityPresentationProviderRegistry(
+            activityRegistry: activityRegistry,
+            additionalProviders: [
+                AnyLiveActivityPresentationProvider(
+                    TimeLiveActivityProvider(manager: timeManager, isEnabled: true)
+                ),
+                AnyLiveActivityPresentationProvider(media)
+            ]
         )
+        let coordinator = ActivityLivePresentationCoordinator(registry: liveRegistry)
 
         pomodoroManager.start()
         await coordinator.waitForPendingReconciliation()
-        let sharedStack = selectedActivityLivePresentationStack(
-            from: registry.activities,
-            snapshot: coordinator.snapshot
-        )
-        assertStack(
-            sharedStack,
-            contains: [.calendar, .pomodoro]
-        )
-        XCTAssertEqual(
-            sharedStack.debugSelectionDescription,
-            ".split(calendar, builtin.pomodoro)"
-        )
-        XCTAssertLessThan(
-            try XCTUnwrap(coordinator.snapshot.startedSequence(for: .calendar)),
-            try XCTUnwrap(coordinator.snapshot.startedSequence(for: .pomodoro))
+        assertStack(selectedStack(from: liveRegistry, coordinator: coordinator), contains: [.pomodoro])
+        let pomodoroSequence = try XCTUnwrap(
+            coordinator.snapshot.startedSequence(for: .pomodoro)
         )
 
-        calendarManager.events = []
+        XCTAssertTrue(timeManager.startTimer(duration: 60))
         await coordinator.waitForPendingReconciliation()
         assertStack(
-            selectedActivityLivePresentationStack(
-                from: registry.activities,
-                snapshot: coordinator.snapshot
-            ),
-            contains: [.pomodoro]
+            selectedStack(from: liveRegistry, coordinator: coordinator),
+            contains: [.pomodoro, .time]
         )
-        XCTAssertNil(coordinator.snapshot.startedSequence(for: .calendar))
-        XCTAssertEqual(registry.availableActivityIDs, [.calendar, .pomodoro])
+        let timeSequence = try XCTUnwrap(coordinator.snapshot.startedSequence(for: .time))
+        XCTAssertGreaterThan(timeSequence, pomodoroSequence)
+
+        timeManager.pause()
+        await coordinator.waitForPendingReconciliation()
+        XCTAssertEqual(coordinator.snapshot.startedSequence(for: .time), timeSequence)
+
+        media.livePresentationState = .visible(priority: .normal)
+        await coordinator.waitForPendingReconciliation()
+        assertStack(
+            selectedStack(from: liveRegistry, coordinator: coordinator),
+            contains: [.time, .media]
+        )
+        let mediaSequence = try XCTUnwrap(coordinator.snapshot.startedSequence(for: .media))
+
+        media.livePresentationState = .visible(priority: .low)
+        await coordinator.waitForPendingReconciliation()
+        XCTAssertEqual(coordinator.snapshot.startedSequence(for: .media), mediaSequence)
+
+        timeManager.reset()
+        await coordinator.waitForPendingReconciliation()
+        assertStack(
+            selectedStack(from: liveRegistry, coordinator: coordinator),
+            contains: [.pomodoro, .media]
+        )
+
+        media.livePresentationState = .hidden
+        await coordinator.waitForPendingReconciliation()
+        assertStack(selectedStack(from: liveRegistry, coordinator: coordinator), contains: [.pomodoro])
+    }
+
+    func testTimerAndMediaEligibilitySemanticsDoNotCreateFalseRestarts() throws {
+        let now = Date(timeIntervalSince1970: 30_000)
+        var running = try XCTUnwrap(TimeActivitySnapshot.timer(duration: 60, startedAt: now))
+
+        XCTAssertEqual(
+            TimeLiveActivityProvider.presentationState(snapshot: running, isEnabled: true),
+            .visible(priority: .normal)
+        )
+        running.pause(at: now.addingTimeInterval(10))
+        XCTAssertEqual(
+            TimeLiveActivityProvider.presentationState(snapshot: running, isEnabled: true),
+            .visible(priority: .low)
+        )
+        running.finish()
+        XCTAssertEqual(
+            TimeLiveActivityProvider.presentationState(snapshot: running, isEnabled: true),
+            .hidden
+        )
+
+        XCTAssertEqual(
+            MediaLiveActivityProvider.presentationState(
+                isEnabled: true,
+                isPlaying: true,
+                isPlayerIdle: false
+            ),
+            .visible(priority: .normal)
+        )
+        XCTAssertEqual(
+            MediaLiveActivityProvider.presentationState(
+                isEnabled: true,
+                isPlaying: false,
+                isPlayerIdle: false
+            ),
+            .visible(priority: .low)
+        )
+        XCTAssertEqual(
+            MediaLiveActivityProvider.presentationState(
+                isEnabled: true,
+                isPlaying: false,
+                isPlayerIdle: true
+            ),
+            .hidden
+        )
+    }
+
+    func testTransientInterruptionPreservesSelectedStackInDiagnostics() throws {
+        let provider = LiveTestProvider(
+            id: .pomodoro,
+            state: .visible(priority: .normal)
+        )
+        let activityRegistry = try ActivityRegistry { }
+        let liveRegistry = LiveActivityPresentationProviderRegistry(
+            activityRegistry: activityRegistry,
+            additionalProviders: [AnyLiveActivityPresentationProvider(provider)]
+        )
+        let stack = selectedActivityLivePresentationStack(
+            from: liveRegistry.providers,
+            snapshot: .empty
+        )
+
+        XCTAssertEqual(
+            closedNotchLivePresentationDisplayDescription(
+                for: stack,
+                isNotchClosed: true,
+                hidesOnClosed: false,
+                interruption: .battery
+            ),
+            "selected=.full(builtin.pomodoro) display=.interrupted(battery)"
+        )
+        XCTAssertEqual(
+            closedNotchLivePresentationDisplayDescription(
+                for: stack,
+                isNotchClosed: true,
+                hidesOnClosed: false,
+                interruption: .mediaNotification
+            ),
+            "selected=.full(builtin.pomodoro) display=.interrupted(media-notification)"
+        )
     }
 }
 
-private func makeCalendarEvent(
-    id: String = "event",
-    start: Date,
-    end: Date,
-    isAllDay: Bool = false,
-    type: EventType = .event(.accepted)
-) -> EventModel {
-    EventModel(
-        id: id,
-        start: start,
-        end: end,
-        title: "Design review",
-        location: nil,
-        notes: nil,
-        url: nil,
-        isAllDay: isAllDay,
-        type: type,
-        calendar: CalendarModel(
-            id: "calendar",
-            account: "Tests",
-            title: "Tests",
-            color: .systemRed,
-            isSubscribed: false,
-            isReminder: type.isReminder
-        ),
-        participants: [],
-        timeZone: nil,
-        hasRecurrenceRules: false,
-        priority: nil
+@MainActor
+private func selectedStack(
+    from registry: LiveActivityPresentationProviderRegistry,
+    coordinator: ActivityLivePresentationCoordinator
+) -> ActivityLivePresentationStack {
+    selectedActivityLivePresentationStack(
+        from: registry.providers,
+        snapshot: coordinator.snapshot
     )
 }
 
@@ -636,5 +656,33 @@ private final class LiveTestActivity: NotchActivity {
 
     func makeLivePresentationView() -> some View {
         Text(metadata.name)
+    }
+}
+
+@MainActor
+private final class LiveTestProvider: LiveActivityPresentationProvider {
+    let id: ActivityID
+    let name: String
+    @Published var livePresentationState: ActivityLivePresentationState
+
+    init(
+        id: ActivityID,
+        state: ActivityLivePresentationState = .hidden
+    ) {
+        self.id = id
+        name = id.rawValue
+        livePresentationState = state
+    }
+
+    func makeAccessoryView() -> some View {
+        Image(systemName: "circle")
+    }
+
+    func makeFullView() -> some View {
+        Text(name)
+    }
+
+    func makeMinimalView() -> some View {
+        Text(name)
     }
 }

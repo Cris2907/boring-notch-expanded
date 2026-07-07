@@ -14,7 +14,6 @@ protocol CalendarServiceProviding {
     func requestAccess(to type: EKEntityType) async throws -> Bool
     func calendars() async -> [CalendarModel]
     func events(from start: Date, to end: Date, calendars: [String]) async -> [EventModel]
-    func setReminderCompleted(reminderID: String, completed: Bool) async
 }
 
 class CalendarService: CalendarServiceProviding {

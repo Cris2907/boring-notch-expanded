@@ -55,7 +55,7 @@ func makeCompactView() -> some View {
 }
 ```
 
-The current closed-notch shell still owns the established priority between battery, Bluetooth, HUD, timer, music, and idle content. Registering an activity does not automatically insert its compact view into that chain yet. Compact integration should be added when an existing compact feature is migrated and its priority and sizing behavior can be preserved explicitly.
+The closed-notch shell uses one live-provider stack for registered activity presentations, Timer, and Media. `makeCompactView()` is not inserted into that stack.
 
 `makeCompactView()` remains a generic alternate presentation and is separate from the live-presentation API below. Pomodoro keeps its compact view as an example, but production closed-notch rendering uses its live presentation instead.
 
@@ -65,8 +65,8 @@ Use live presentations for contextual, ongoing information that should appear ar
 
 Activities can provide two closed-notch live views:
 
-- `makeLivePresentationView()` is the full live presentation. It is shown across both sides of the physical notch when this is the only selected registered live activity.
-- `makeMinimalLivePresentationView()` is the minimal live presentation. It is shown on one side of the physical notch when the activity shares the closed notch with another registered live activity.
+- `makeLivePresentationView()` is the full live presentation. It is shown across both sides of the physical notch when this is the only selected live provider.
+- `makeMinimalLivePresentationView()` is the minimal live presentation. It is shown on one side of the physical notch when the activity shares the closed notch with another live provider.
 
 `makeMinimalLivePresentationView()` is additive. If an activity does not provide a dedicated minimal live view, the type-erased activity can reuse its existing live presentation. `makeCompactView()` remains a separate generic alternate presentation and is not used as the minimal live presentation.
 
@@ -84,25 +84,23 @@ func makeMinimalLivePresentationView() -> some View {
 }
 ```
 
-The available priorities are `.low`, `.normal`, and `.high`. Priority remains part of `ActivityLivePresentationState` for source compatibility and explicit visibility metadata, but priority no longer decides which registered live activities win the closed-notch stack. Among registered activities, recency decides selection.
+The available priorities are `.low`, `.normal`, and `.high`. Priority remains part of `ActivityLivePresentationState` for source compatibility and explicit visibility metadata, but priority does not decide which live providers win the closed-notch stack. Recency decides selection.
 
 The closed-notch activity stack behaves as follows:
 
-- Zero eligible registered live activities: preserve the existing fallback behavior.
-- One eligible registered live activity: render its full live presentation.
-- Two or more eligible registered live activities: render the two most recently started activities using their minimal live presentations, one on each side of the physical notch.
+- Zero eligible live providers: preserve the idle fallback behavior.
+- One eligible live provider: render its full live presentation.
+- Two or more eligible live providers: render the two most recently started providers using their minimal live presentations, one on each side of the physical notch.
 
-An activity is eligible for the live stack when `isAvailable == true` and `livePresentationState.priority != nil`. A live activity becomes started when it transitions from not eligible to eligible. That transition is detected by `ActivityLivePresentationCoordinator`, which subscribes to the existing activity change-forwarding path through `ActivityRegistry.objectWillChange` and reconciles previous eligibility against current eligibility centrally. Starts are not inferred from SwiftUI body evaluation, and the coordinator does not contain Pomodoro-specific logic.
+A registered activity is adapted into a live provider and is eligible when `isAvailable == true` and `livePresentationState.priority != nil`. Timer and Media use non-navigation provider adapters over their existing managers. A provider becomes started when it transitions from not eligible to eligible. `ActivityLivePresentationCoordinator` subscribes to `LiveActivityPresentationProviderRegistry.objectWillChange` and reconciles eligibility centrally. Starts are not inferred from SwiftUI body evaluation, and the coordinator contains no provider-specific logic.
 
 Recency is in memory for this iteration. If the app launches while activities are already eligible, the selector uses registry order as deterministic initial ordering. Hiding, ending, or making an activity unavailable removes it from current live selection and promotes the next most recent eligible activity. If an activity becomes eligible again later, it receives a new in-memory recency position.
 
-The rendering boundary remains pure: it receives registered activities plus the coordinator snapshot, filters available visible activities, sorts by recency, and returns no stack, a full stack, or a split stack. The core retains control of system and legacy content. The current order is battery, Bluetooth, HUD, legacy Timer, the registered activity live stack, Media, then idle content.
+The rendering boundary remains pure: it receives live providers plus the coordinator snapshot, filters eligible providers, sorts by recency, and returns no stack, a full stack, or a split stack. Startup, battery, Bluetooth, system HUDs, and bounded completion notifications remain transient interruptions outside the stack. Interruptions do not alter live selection or recency.
 
-The core supplies the metadata icon, physical-notch spacing, and fixed content dimensions. Live views must not resize the notch, change navigation, or reach into `ContentView`. Keep live content inexpensive: update only while its displayed data changes and derive elapsed time from timestamps rather than accumulated ticks.
+The core owns physical-notch spacing and fixed content dimensions. Each provider supplies accessory, full, and minimal content. Live views must not resize the notch or change navigation. Keep live content inexpensive: update only while its displayed data changes and derive elapsed time from timestamps rather than accumulated ticks.
 
-Pomodoro publishes a normal-priority presentation with remaining time while running, a low-priority static presentation while paused, and hides it while ready or inactive. Media remains on its existing path and is not a registered activity live presentation.
-
-Calendar publishes a normal-priority presentation only while a selected, timed calendar event is in progress. All-day items, reminders, upcoming events, and ended events remain hidden. Its full presentation shows the current event and end time; its minimal presentation shows the end time while the core stack supplies the Calendar icon and placement.
+Pomodoro publishes a normal-priority presentation with remaining time while running, a low-priority static presentation while paused, and hides it while ready or inactive. Timer is eligible while running or paused and ends when reset or finished. Media remains eligible through its configured post-pause grace period and ends when it becomes idle. Calendar remains an expanded-only registered activity and does not publish a live presentation.
 
 ## State and lifecycle
 
@@ -114,7 +112,7 @@ Use SwiftUI state for presentation-local state:
 
 Use a manager for persistent sessions, system observers, services, or state shared across displays. Do not move those responsibilities into the registry. Activity instances are shared, while the app can create a notch window per display.
 
-Publish changes to `isAvailable`, `isActive`, and `livePresentationState`. Type erasure and the registry forward `objectWillChange` to navigation consumers and to the live presentation coordinator. The coordinator owns in-memory live recency; individual activities should only publish their own availability and live visibility.
+Publish changes to `isAvailable`, `isActive`, and `livePresentationState`. Type erasure forwards `objectWillChange` to navigation and live-provider consumers. The coordinator owns in-memory live recency; providers only publish their own eligibility inputs and presentations.
 
 Lifecycle callbacks are for work that genuinely follows visibility. They may run once per visible notch window, so implementations must be idempotent or reference-counted. Prefer normal SwiftUI `onAppear` and `onDisappear` inside activity views for view-local behavior.
 

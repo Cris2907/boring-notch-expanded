@@ -26,8 +26,12 @@ final class PomodoroActivityTests: XCTestCase {
 
     func testStableActivityIDMetadataAndDefaultRegistration() throws {
         XCTAssertEqual(PomodoroActivity.activityID.rawValue, "builtin.pomodoro")
+        XCTAssertNotNil(ActivityRegistry.shared.activity(for: .pomodoro))
 
-        let registered = try XCTUnwrap(ActivityRegistry.shared.activity(for: .pomodoro))
+        let registry = try ActivityRegistry {
+            PomodoroActivity(manager: makeManager())
+        }
+        let registered = try XCTUnwrap(registry.activity(for: .pomodoro))
         XCTAssertEqual(registered.metadata.name, "Pomodoro")
         XCTAssertEqual(registered.metadata.systemImage, "timer")
         XCTAssertTrue(registered.isAvailable)
@@ -377,4 +381,3 @@ private func activityIDs(in stack: ActivityLivePresentationStack) -> [ActivityID
         return [leading.id, trailing.id]
     }
 }
-

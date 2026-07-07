@@ -24,28 +24,15 @@ class CalendarManager: ObservableObject {
     @Published var calendarAuthorizationStatus: EKAuthorizationStatus = .notDetermined
     @Published var reminderAuthorizationStatus: EKAuthorizationStatus = .notDetermined
     private var selectedCalendars: [CalendarModel] = []
-    private let calendarService: CalendarServiceProviding
+    private let calendarService = CalendarService()
 
     private var eventStoreChangedObserver: NSObjectProtocol?
 
-    init(
-        calendarService: CalendarServiceProviding = CalendarService(),
-        currentDate: Date = .now,
-        observesEventStoreChanges: Bool = true,
-        loadsInitialData: Bool = true
-    ) {
-        self.calendarService = calendarService
-        self.currentWeekStartDate = CalendarManager.startOfDay(currentDate)
-
-        if observesEventStoreChanges {
-            setupEventStoreChangedObserver()
-        }
-
-        if loadsInitialData {
-            Task {
-                await reloadCalendarAndReminderLists()
-                await updateEvents()
-            }
+    private init() {
+        self.currentWeekStartDate = CalendarManager.startOfDay(Date())
+        setupEventStoreChangedObserver()
+        Task {
+            await reloadCalendarAndReminderLists()
         }
     }
 
@@ -63,7 +50,6 @@ class CalendarManager: ObservableObject {
         ) { [weak self] _ in
             Task {
                 await self?.reloadCalendarAndReminderLists()
-                await self?.updateEvents()
             }
         }
     }

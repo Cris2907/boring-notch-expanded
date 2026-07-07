@@ -13413,6 +13413,9 @@
         }
       }
     },
+    "Media paused" : {
+
+    },
     "Media playback live activity" : {
       "localizations" : {
         "ar" : {
@@ -13512,6 +13515,9 @@
           }
         }
       }
+    },
+    "Media playing" : {
+
     },
     "Media Source" : {
       "localizations" : {

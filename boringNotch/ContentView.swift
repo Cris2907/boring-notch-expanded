@@ -26,6 +26,7 @@ struct ContentView: View {
     @ObservedObject var bluetoothAudioManager = BluetoothAudioManager.shared
     @ObservedObject var timeActivityManager = TimeActivityManager.shared
     @ObservedObject private var activityRegistry = ActivityRegistry.shared
+    @ObservedObject private var liveProviderRegistry = LiveActivityPresentationProviderRegistry.shared
     @ObservedObject private var activityLivePresentationCoordinator = ActivityLivePresentationCoordinator.shared
     @State private var hoverTask: Task<Void, Never>?
     @State private var isHovering: Bool = false
@@ -34,7 +35,9 @@ struct ContentView: View {
     @State private var gestureProgress: CGFloat = .zero
 
     @State private var haptics: Bool = false
-    @State private var lastLoggedClosedActivityLivePresentation = ActivityLivePresentationStack.none.debugSelectionDescription
+    @State private var lastLoggedClosedActivityLivePresentation = ""
+    @State private var showsTimerCompletionInterruption = false
+    @State private var timerCompletionInterruptionTask: Task<Void, Never>?
 
     @Namespace var albumArtNamespace
 
@@ -82,11 +85,7 @@ struct ContentView: View {
         } else if shouldShowBluetoothActivity && vm.notchState == .closed && !vm.hideOnClosed
         {
             chinWidth += bluetoothSneakSize.width
-        } else if clockShowInClosedNotch && timeActivityManager.hasSession
-            && shouldShowMediaActivity && vm.notchState == .closed && !vm.hideOnClosed
-        {
-            chinWidth += (2 * max(0, vm.effectiveClosedNotchHeight - 12) + 20)
-        } else if clockShowInClosedNotch && timeActivityManager.hasSession
+        } else if showsTimerCompletionInterruption && clockShowInClosedNotch
             && vm.notchState == .closed && !vm.hideOnClosed
         {
             chinWidth += (
@@ -99,9 +98,6 @@ struct ContentView: View {
         ), vm.notchState == .closed && !vm.hideOnClosed
         {
             chinWidth += livePresentationWidth
-        } else if shouldShowMediaActivity && vm.notchState == .closed && !vm.hideOnClosed
-        {
-            chinWidth += (2 * max(0, vm.effectiveClosedNotchHeight - 12) + 20)
         } else if !coordinator.expandingView.show && vm.notchState == .closed
             && (!musicManager.isPlaying && musicManager.isPlayerIdle) && Defaults[.showNotHumanFace]
             && !vm.hideOnClosed
@@ -127,30 +123,15 @@ struct ContentView: View {
         }
     }
 
-    private func closedActivityLivePresentationRenderDescription(
+    private func closedActivityLivePresentationDisplayDescription(
         for stack: ActivityLivePresentationStack
     ) -> String {
-        guard vm.notchState == .closed, !vm.hideOnClosed, stack.isVisible else {
-            return ActivityLivePresentationStack.none.debugSelectionDescription
-        }
-
-        let isSystemHUD = coordinator.sneakPeek.show
-            && coordinator.sneakPeek.type != .music
-            && coordinator.sneakPeek.type != .battery
-            && coordinator.sneakPeek.type != .bluetooth
-
-        if coordinator.helloAnimationRunning
-            || (coordinator.expandingView.type == .battery
-                && coordinator.expandingView.show
-                && Defaults[.showPowerStatusNotifications])
-            || shouldShowBluetoothActivity
-            || isSystemHUD
-            || (clockShowInClosedNotch && timeActivityManager.hasSession)
-        {
-            return ActivityLivePresentationStack.none.debugSelectionDescription
-        }
-
-        return stack.debugSelectionDescription
+        closedNotchLivePresentationDisplayDescription(
+            for: stack,
+            isNotchClosed: vm.notchState == .closed,
+            hidesOnClosed: vm.hideOnClosed,
+            interruption: activeClosedNotchInterruption
+        )
     }
 
     private func logClosedActivityLivePresentationIfNeeded(_ description: String) {
@@ -166,10 +147,36 @@ struct ContentView: View {
         lastLoggedClosedActivityLivePresentation = description
     }
 
-    private var shouldShowMediaActivity: Bool {
-        (!coordinator.expandingView.show || coordinator.expandingView.type == .music)
-            && (musicManager.isPlaying || !musicManager.isPlayerIdle)
-            && coordinator.musicLiveActivityEnabled
+    private var activeClosedNotchInterruption: ClosedNotchLiveInterruption? {
+        if coordinator.helloAnimationRunning {
+            return .startup
+        }
+        if coordinator.expandingView.type == .battery
+            && coordinator.expandingView.show
+            && Defaults[.showPowerStatusNotifications]
+        {
+            return .battery
+        }
+        if shouldShowBluetoothActivity {
+            return .bluetooth
+        }
+        if coordinator.sneakPeek.show
+            && coordinator.sneakPeek.type != .music
+            && coordinator.sneakPeek.type != .battery
+            && coordinator.sneakPeek.type != .bluetooth
+        {
+            return .systemHUD
+        }
+        if coordinator.sneakPeek.show
+            && coordinator.sneakPeek.type == .music
+            && Defaults[.sneakPeekStyles] == .standard
+        {
+            return .mediaNotification
+        }
+        if showsTimerCompletionInterruption && clockShowInClosedNotch {
+            return .timerCompletion
+        }
+        return nil
     }
 
     private var shouldShowBluetoothActivity: Bool {
@@ -178,12 +185,29 @@ struct ContentView: View {
             && Defaults[.showBluetoothHeadphoneNotifications]
     }
 
+    private func updateTimerCompletionInterruption(for phase: TimeActivityPhase?) {
+        timerCompletionInterruptionTask?.cancel()
+        timerCompletionInterruptionTask = nil
+
+        guard phase == .finished else {
+            showsTimerCompletionInterruption = false
+            return
+        }
+
+        showsTimerCompletionInterruption = true
+        timerCompletionInterruptionTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled else { return }
+            showsTimerCompletionInterruption = false
+        }
+    }
+
     var body: some View {
         let livePresentationStack = selectedActivityLivePresentationStack(
-            from: activityRegistry.activities,
+            from: liveProviderRegistry.providers,
             snapshot: activityLivePresentationCoordinator.snapshot
         )
-        let renderedLivePresentationDescription = closedActivityLivePresentationRenderDescription(
+        let renderedLivePresentationDescription = closedActivityLivePresentationDisplayDescription(
             for: livePresentationStack
         )
 
@@ -288,7 +312,13 @@ struct ContentView: View {
                             }
                         }
                     }
+                    .onChange(of: timeActivityManager.snapshot?.phase) { _, newPhase in
+                        updateTimerCompletionInterruption(for: newPhase)
+                    }
                     .onAppear {
+                        updateTimerCompletionInterruption(
+                            for: timeActivityManager.snapshot?.phase
+                        )
                         logClosedActivityLivePresentationIfNeeded(
                             renderedLivePresentationDescription
                         )
@@ -443,11 +473,11 @@ struct ContentView: View {
                           Rectangle()
                               .fill(.clear)
                               .frame(width: vm.closedNotchSize.width - 20, height: vm.effectiveClosedNotchHeight)
-                      } else if clockShowInClosedNotch && timeActivityManager.hasSession && vm.notchState == .closed && !vm.hideOnClosed {
-                          ClosedTimeActivityView(
-                              showMedia: shouldShowMediaActivity,
-                              albumArtNamespace: albumArtNamespace
-                          )
+                      } else if showsTimerCompletionInterruption,
+                                clockShowInClosedNotch,
+                                vm.notchState == .closed,
+                                !vm.hideOnClosed {
+                          TimerCompletionInterruptionView()
                           .transition(.opacity)
                       } else if livePresentationStack.isVisible,
                                 vm.notchState == .closed,
@@ -459,9 +489,6 @@ struct ContentView: View {
                           )
                           .id(livePresentationStack.identity)
                           .transition(.opacity)
-                      } else if shouldShowMediaActivity && vm.notchState == .closed && !vm.hideOnClosed {
-                          MusicLiveActivity()
-                              .frame(alignment: .center)
                       } else if !coordinator.expandingView.show && vm.notchState == .closed && (!musicManager.isPlaying && musicManager.isPlayerIdle) && Defaults[.showNotHumanFace] && !vm.hideOnClosed  {
                           BoringFaceAnimation()
                        } else if vm.notchState == .open {
@@ -495,7 +522,7 @@ struct ContentView: View {
                           }
                           // Old sneak peek music
                           else if coordinator.sneakPeek.type == .music {
-                              if vm.notchState == .closed && !vm.hideOnClosed && Defaults[.sneakPeekStyles] == .standard && !timeActivityManager.hasSession {
+                              if vm.notchState == .closed && !vm.hideOnClosed && Defaults[.sneakPeekStyles] == .standard {
                                   HStack(alignment: .center) {
                                       Image(systemName: "music.note")
                                       GeometryReader { geo in
@@ -568,107 +595,6 @@ struct ContentView: View {
                 MinimalFaceFeatures()
             }
         }.frame(
-            height: vm.effectiveClosedNotchHeight,
-            alignment: .center
-        )
-    }
-
-    @ViewBuilder
-    func MusicLiveActivity() -> some View {
-        HStack {
-            Image(nsImage: musicManager.albumArt)
-                .resizable()
-                .clipped()
-                .clipShape(
-                    RoundedRectangle(
-                        cornerRadius: MusicPlayerImageSizes.cornerRadiusInset.closed)
-                )
-                .matchedGeometryEffect(id: "albumArt", in: albumArtNamespace)
-                .frame(
-                    width: max(0, vm.effectiveClosedNotchHeight - 12),
-                    height: max(0, vm.effectiveClosedNotchHeight - 12)
-                )
-
-            Rectangle()
-                .fill(.black)
-                .overlay(
-                    HStack(alignment: .top) {
-                        if coordinator.expandingView.show
-                            && coordinator.expandingView.type == .music
-                        {
-                            MarqueeText(
-                                .constant(musicManager.songTitle),
-                                textColor: Defaults[.coloredSpectrogram]
-                                    ? Color(nsColor: musicManager.avgColor) : Color.gray,
-                                minDuration: 0.4,
-                                frameWidth: 100
-                            )
-                            .opacity(
-                                (coordinator.expandingView.show
-                                    && Defaults[.sneakPeekStyles] == .inline)
-                                    ? 1 : 0
-                            )
-                            Spacer(minLength: vm.closedNotchSize.width)
-                            // Song Artist
-                            Text(musicManager.artistName)
-                                .lineLimit(1)
-                                .truncationMode(.tail)
-                                .foregroundStyle(
-                                    Defaults[.coloredSpectrogram]
-                                        ? Color(nsColor: musicManager.avgColor)
-                                        : Color.gray
-                                )
-                                .opacity(
-                                    (coordinator.expandingView.show
-                                        && coordinator.expandingView.type == .music
-                                        && Defaults[.sneakPeekStyles] == .inline)
-                                        ? 1 : 0
-                                )
-                        }
-                    }
-                )
-                .frame(
-                    width: (coordinator.expandingView.show
-                        && coordinator.expandingView.type == .music
-                        && Defaults[.sneakPeekStyles] == .inline)
-                        ? 380
-                        : vm.closedNotchSize.width
-                            + -cornerRadiusInsets.closed.top
-                )
-
-            HStack {
-                if useMusicVisualizer {
-                    Rectangle()
-                        .fill(
-                            Defaults[.coloredSpectrogram]
-                                ? Color(nsColor: musicManager.avgColor).gradient
-                                : Color.gray.gradient
-                        )
-                        .frame(width: 50, alignment: .center)
-                        .matchedGeometryEffect(id: "spectrum", in: albumArtNamespace)
-                        .mask {
-                            AudioSpectrumView(isPlaying: $musicManager.isPlaying)
-                                .frame(width: 16, height: 12)
-                        }
-                } else {
-                    LottieAnimationContainer()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-            }
-            .frame(
-                width: max(
-                    0,
-                    vm.effectiveClosedNotchHeight - 12
-                        + gestureProgress / 2
-                ),
-                height: max(
-                    0,
-                    vm.effectiveClosedNotchHeight - 12
-                ),
-                alignment: .center
-            )
-        }
-        .frame(
             height: vm.effectiveClosedNotchHeight,
             alignment: .center
         )
@@ -819,6 +745,97 @@ struct ContentView: View {
     }
 }
 
+enum ClosedNotchLiveInterruption: String {
+    case startup
+    case battery
+    case bluetooth
+    case systemHUD = "system-hud"
+    case mediaNotification = "media-notification"
+    case timerCompletion = "timer-completion"
+}
+
+func closedNotchLivePresentationDisplayDescription(
+    for stack: ActivityLivePresentationStack,
+    isNotchClosed: Bool,
+    hidesOnClosed: Bool,
+    interruption: ClosedNotchLiveInterruption?
+) -> String {
+    let selection = stack.debugSelectionDescription
+
+    guard isNotchClosed else {
+        return "selected=\(selection) display=.hidden(notch-open)"
+    }
+    guard !hidesOnClosed else {
+        return "selected=\(selection) display=.hidden(closed-notch-disabled)"
+    }
+    if let interruption {
+        return "selected=\(selection) display=.interrupted(\(interruption.rawValue))"
+    }
+    return "selected=\(selection) display=\(selection)"
+}
+
+struct MediaLivePresentationAccessoryView: View {
+    @ObservedObject var manager: MusicManager
+
+    var body: some View {
+        Image(nsImage: manager.albumArt)
+            .resizable()
+            .scaledToFill()
+            .clipShape(
+                RoundedRectangle(cornerRadius: MusicPlayerImageSizes.cornerRadiusInset.closed)
+            )
+            .accessibilityLabel("Media activity")
+    }
+}
+
+struct MediaLivePresentationView: View {
+    @ObservedObject var manager: MusicManager
+    @Default(.useMusicVisualizer) private var useMusicVisualizer
+
+    var body: some View {
+        Group {
+            if useMusicVisualizer {
+                Rectangle()
+                    .fill(
+                        Defaults[.coloredSpectrogram]
+                            ? Color(nsColor: manager.avgColor).gradient
+                            : Color.gray.gradient
+                    )
+                    .mask {
+                        AudioSpectrumView(isPlaying: $manager.isPlaying)
+                            .frame(width: 16, height: 12)
+                    }
+            } else {
+                LottieAnimationContainer()
+            }
+        }
+        .accessibilityLabel(manager.isPlaying ? "Media playing" : "Media paused")
+    }
+}
+
+struct MediaMinimalLivePresentationView: View {
+    @ObservedObject var manager: MusicManager
+
+    var body: some View {
+        Group {
+            if manager.isPlaying {
+                AudioSpectrumView(isPlaying: $manager.isPlaying)
+                    .frame(width: 16, height: 12)
+                    .foregroundStyle(
+                        Defaults[.coloredSpectrogram]
+                            ? Color(nsColor: manager.avgColor)
+                            : .gray
+                    )
+            } else {
+                Image(systemName: "pause.fill")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.gray)
+            }
+        }
+        .accessibilityLabel(manager.isPlaying ? "Media playing" : "Media paused")
+    }
+}
+
 private struct ClosedActivityLivePresentationStackView: View {
     let stack: ActivityLivePresentationStack
     let fullContentWidth: CGFloat
@@ -845,7 +862,7 @@ private struct ClosedActivityLivePresentationStackView: View {
 
 private struct ClosedActivityFullLivePresentationView: View {
     @EnvironmentObject private var vm: BoringViewModel
-    @ObservedObject var activity: AnyNotchActivity
+    @ObservedObject var activity: AnyLiveActivityPresentationProvider
 
     let contentWidth: CGFloat
 
@@ -853,11 +870,8 @@ private struct ClosedActivityFullLivePresentationView: View {
         let accessorySize = max(0, vm.effectiveClosedNotchHeight - 12)
 
         HStack(spacing: 8) {
-            Image(systemName: activity.metadata.systemImage)
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(activity.metadata.tint)
+            activity.makeAccessoryView()
                 .frame(width: accessorySize, height: accessorySize)
-                .accessibilityHidden(true)
 
             Rectangle()
                 .fill(.black)
@@ -868,7 +882,7 @@ private struct ClosedActivityFullLivePresentationView: View {
                     )
                 )
 
-            activity.makeLivePresentationView()
+            activity.makeFullView()
                 .frame(width: contentWidth, alignment: .leading)
         }
         .frame(height: vm.effectiveClosedNotchHeight, alignment: .center)
@@ -877,8 +891,8 @@ private struct ClosedActivityFullLivePresentationView: View {
 
 private struct ClosedActivitySplitLivePresentationView: View {
     @EnvironmentObject private var vm: BoringViewModel
-    @ObservedObject var leadingActivity: AnyNotchActivity
-    @ObservedObject var trailingActivity: AnyNotchActivity
+    @ObservedObject var leadingActivity: AnyLiveActivityPresentationProvider
+    @ObservedObject var trailingActivity: AnyLiveActivityPresentationProvider
 
     let contentWidth: CGFloat
 
@@ -913,7 +927,7 @@ private struct ClosedActivitySplitLivePresentationView: View {
 
 private struct ClosedActivityMinimalLivePresentationView: View {
     @EnvironmentObject private var vm: BoringViewModel
-    @ObservedObject var activity: AnyNotchActivity
+    @ObservedObject var activity: AnyLiveActivityPresentationProvider
 
     let contentWidth: CGFloat
     let iconPlacement: ClosedActivityMinimalIconPlacement
@@ -927,7 +941,7 @@ private struct ClosedActivityMinimalLivePresentationView: View {
                 icon(accessorySize: accessorySize)
             }
 
-            activity.makeMinimalLivePresentationView()
+            activity.makeMinimalView()
                 .frame(width: contentWidth, alignment: iconPlacement.contentAlignment)
 
             if iconPlacement == .trailing {
@@ -942,11 +956,8 @@ private struct ClosedActivityMinimalLivePresentationView: View {
     }
 
     private func icon(accessorySize: CGFloat) -> some View {
-        Image(systemName: activity.metadata.systemImage)
-            .font(.system(size: 16, weight: .semibold))
-            .foregroundStyle(activity.metadata.tint)
+        activity.makeAccessoryView()
             .frame(width: accessorySize, height: accessorySize)
-            .accessibilityHidden(true)
     }
 }
 

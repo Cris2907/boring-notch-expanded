@@ -1,4 +1,5 @@
 import Combine
+import Defaults
 import SwiftUI
 
 public struct ActivityID: RawRepresentable, Hashable, Codable, Sendable, CustomStringConvertible {
@@ -176,6 +177,226 @@ final class AnyNotchActivity: @MainActor ObservableObject, Identifiable {
     func activityDidDisappear() { didDisappear() }
 }
 
+@MainActor
+protocol LiveActivityPresentationProvider: ObservableObject {
+    associatedtype AccessoryContent: View
+    associatedtype FullContent: View
+    associatedtype MinimalContent: View
+
+    var id: ActivityID { get }
+    var name: String { get }
+    var livePresentationState: ActivityLivePresentationState { get }
+
+    @ViewBuilder func makeAccessoryView() -> AccessoryContent
+    @ViewBuilder func makeFullView() -> FullContent
+    @ViewBuilder func makeMinimalView() -> MinimalContent
+}
+
+@MainActor
+final class AnyLiveActivityPresentationProvider: ObservableObject, Identifiable {
+    let objectWillChange = ObservableObjectPublisher()
+
+    let id: ActivityID
+    let name: String
+
+    private let presentationState: () -> ActivityLivePresentationState
+    private let accessoryView: () -> AnyView
+    private let fullView: () -> AnyView
+    private let minimalView: () -> AnyView
+    private var providerObservation: AnyCancellable?
+
+    init<Provider: LiveActivityPresentationProvider>(_ provider: Provider) {
+        id = provider.id
+        name = provider.name
+        presentationState = { provider.livePresentationState }
+        accessoryView = { AnyView(provider.makeAccessoryView()) }
+        fullView = { AnyView(provider.makeFullView()) }
+        minimalView = { AnyView(provider.makeMinimalView()) }
+        providerObservation = provider.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }
+    }
+
+    init(activity: AnyNotchActivity) {
+        id = activity.id
+        name = activity.metadata.name
+        presentationState = {
+            activity.isAvailable ? activity.livePresentationState : .hidden
+        }
+        accessoryView = {
+            AnyView(
+                Image(systemName: activity.metadata.systemImage)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(activity.metadata.tint)
+                    .accessibilityHidden(true)
+            )
+        }
+        fullView = { activity.makeLivePresentationView() }
+        minimalView = { activity.makeMinimalLivePresentationView() }
+        providerObservation = activity.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }
+    }
+
+    var livePresentationState: ActivityLivePresentationState { presentationState() }
+
+    func makeAccessoryView() -> AnyView { accessoryView() }
+    func makeFullView() -> AnyView { fullView() }
+    func makeMinimalView() -> AnyView { minimalView() }
+}
+
+@MainActor
+final class LiveActivityPresentationProviderRegistry: ObservableObject {
+    static let shared = LiveActivityPresentationProviderRegistry(
+        activityRegistry: .shared,
+        additionalProviders: [
+            AnyLiveActivityPresentationProvider(TimeLiveActivityProvider()),
+            AnyLiveActivityPresentationProvider(MediaLiveActivityProvider())
+        ]
+    )
+
+    let providers: [AnyLiveActivityPresentationProvider]
+
+    private var providerObservations: Set<AnyCancellable> = []
+
+    init(
+        activityRegistry: ActivityRegistry,
+        additionalProviders: [AnyLiveActivityPresentationProvider] = []
+    ) {
+        providers = activityRegistry.activities.map {
+            AnyLiveActivityPresentationProvider(activity: $0)
+        } + additionalProviders
+
+        for provider in providers {
+            provider.objectWillChange
+                .sink { [weak self] in
+                    self?.objectWillChange.send()
+                }
+                .store(in: &providerObservations)
+        }
+    }
+}
+
+extension ActivityID {
+    static let time = ActivityID("builtin.time")
+    static let media = ActivityID("builtin.media")
+}
+
+@MainActor
+final class TimeLiveActivityProvider: LiveActivityPresentationProvider {
+    let id = ActivityID.time
+    let name = "Timer"
+
+    private let manager: TimeActivityManager
+    @Published private var isEnabled: Bool
+    private var managerObservation: AnyCancellable?
+    private var enabledObservation: AnyCancellable?
+
+    init(manager: TimeActivityManager? = nil, isEnabled: Bool? = nil) {
+        self.manager = manager ?? .shared
+        self.isEnabled = isEnabled ?? Defaults[.clockShowInClosedNotch]
+
+        managerObservation = self.manager.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }
+
+        if isEnabled == nil {
+            enabledObservation = Defaults.publisher(.clockShowInClosedNotch)
+                .map(\.newValue)
+                .removeDuplicates()
+                .receive(on: RunLoop.main)
+                .sink { [weak self] isEnabled in
+                    self?.isEnabled = isEnabled
+                }
+        }
+    }
+
+    var livePresentationState: ActivityLivePresentationState {
+        Self.presentationState(snapshot: manager.snapshot, isEnabled: isEnabled)
+    }
+
+    static func presentationState(
+        snapshot: TimeActivitySnapshot?,
+        isEnabled: Bool
+    ) -> ActivityLivePresentationState {
+        guard isEnabled, let snapshot else { return .hidden }
+        switch snapshot.phase {
+        case .running:
+            return .visible(priority: .normal)
+        case .paused:
+            return .visible(priority: .low)
+        case .finished:
+            return .hidden
+        }
+    }
+
+    func makeAccessoryView() -> some View {
+        TimeLivePresentationAccessoryView(manager: manager)
+    }
+
+    func makeFullView() -> some View {
+        TimeLivePresentationView(manager: manager)
+    }
+
+    func makeMinimalView() -> some View {
+        TimeMinimalLivePresentationView(manager: manager)
+    }
+}
+
+@MainActor
+final class MediaLiveActivityProvider: LiveActivityPresentationProvider {
+    let id = ActivityID.media
+    let name = "Media"
+
+    private let manager: MusicManager
+    private let coordinator: BoringViewCoordinator
+    private var managerObservation: AnyCancellable?
+    private var coordinatorObservation: AnyCancellable?
+
+    init(
+        manager: MusicManager? = nil,
+        coordinator: BoringViewCoordinator? = nil
+    ) {
+        self.manager = manager ?? .shared
+        self.coordinator = coordinator ?? .shared
+        managerObservation = self.manager.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }
+        coordinatorObservation = self.coordinator.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }
+    }
+
+    var livePresentationState: ActivityLivePresentationState {
+        Self.presentationState(
+            isEnabled: coordinator.musicLiveActivityEnabled,
+            isPlaying: manager.isPlaying,
+            isPlayerIdle: manager.isPlayerIdle
+        )
+    }
+
+    static func presentationState(
+        isEnabled: Bool,
+        isPlaying: Bool,
+        isPlayerIdle: Bool
+    ) -> ActivityLivePresentationState {
+        guard isEnabled, isPlaying || !isPlayerIdle else { return .hidden }
+        return .visible(priority: isPlaying ? .normal : .low)
+    }
+
+    func makeAccessoryView() -> some View {
+        MediaLivePresentationAccessoryView(manager: manager)
+    }
+
+    func makeFullView() -> some View {
+        MediaLivePresentationView(manager: manager)
+    }
+
+    func makeMinimalView() -> some View {
+        MediaMinimalLivePresentationView(manager: manager)
+    }
+}
+
 struct ActivityLivePresentationSnapshot: Equatable, Sendable {
     static let empty = ActivityLivePresentationSnapshot(startedSequences: [:])
 
@@ -188,18 +409,20 @@ struct ActivityLivePresentationSnapshot: Equatable, Sendable {
 
 @MainActor
 final class ActivityLivePresentationCoordinator: ObservableObject {
-    static let shared = ActivityLivePresentationCoordinator(registry: .shared)
+    static let shared = ActivityLivePresentationCoordinator(
+        registry: LiveActivityPresentationProviderRegistry.shared
+    )
 
     @Published private(set) var snapshot: ActivityLivePresentationSnapshot = .empty
 
-    private let registry: ActivityRegistry
+    private let registry: LiveActivityPresentationProviderRegistry
     private var knownEligibility: [ActivityID: Bool] = [:]
     private var startedSequences: [ActivityID: Int] = [:]
     private var nextSequence = 0
     private var registryObservation: AnyCancellable?
     private var reconcileTask: Task<Void, Never>?
 
-    init(registry: ActivityRegistry) {
+    init(registry: LiveActivityPresentationProviderRegistry) {
         self.registry = registry
         reconcile(recordStartsForNewEligibility: false)
 
@@ -209,6 +432,10 @@ final class ActivityLivePresentationCoordinator: ObservableObject {
             #endif
             self?.scheduleReconcile()
         }
+    }
+
+    convenience init(registry: ActivityRegistry) {
+        self.init(registry: LiveActivityPresentationProviderRegistry(activityRegistry: registry))
     }
 
     deinit {
@@ -239,27 +466,27 @@ final class ActivityLivePresentationCoordinator: ObservableObject {
         var nextEligibility: [ActivityID: Bool] = [:]
         var nextStartedSequences = startedSequences
 
-        for activity in registry.activities {
-            let isEligible = activity.isAvailable && activity.livePresentationState.priority != nil
-            let wasEligible = knownEligibility[activity.id] ?? false
+        for provider in registry.providers {
+            let isEligible = provider.livePresentationState.priority != nil
+            let wasEligible = knownEligibility[provider.id] ?? false
 
-            nextEligibility[activity.id] = isEligible
+            nextEligibility[provider.id] = isEligible
 
             if isEligible && !wasEligible {
                 if recordStartsForNewEligibility {
                     nextSequence += 1
-                    nextStartedSequences[activity.id] = nextSequence
+                    nextStartedSequences[provider.id] = nextSequence
                     #if DEBUG
                     ActivityLivePresentationDebugLogger.logBecameEligible(
-                        activityID: activity.id,
+                        activityID: provider.id,
                         sequence: nextSequence
                     )
                     #endif
                 } else {
-                    nextStartedSequences.removeValue(forKey: activity.id)
+                    nextStartedSequences.removeValue(forKey: provider.id)
                     #if DEBUG
                     ActivityLivePresentationDebugLogger.logInitiallyEligible(
-                        activityID: activity.id
+                        activityID: provider.id
                     )
                     #endif
                 }
@@ -267,11 +494,11 @@ final class ActivityLivePresentationCoordinator: ObservableObject {
                 if wasEligible {
                     #if DEBUG
                     ActivityLivePresentationDebugLogger.logBecameIneligible(
-                        activityID: activity.id
+                        activityID: provider.id
                     )
                     #endif
                 }
-                nextStartedSequences.removeValue(forKey: activity.id)
+                nextStartedSequences.removeValue(forKey: provider.id)
             }
         }
 
@@ -281,7 +508,7 @@ final class ActivityLivePresentationCoordinator: ObservableObject {
 
         #if DEBUG
         ActivityLivePresentationDebugLogger.logReconciled(
-            activities: registry.activities,
+            providers: registry.providers,
             snapshot: snapshot
         )
         #endif
@@ -290,8 +517,11 @@ final class ActivityLivePresentationCoordinator: ObservableObject {
 
 enum ActivityLivePresentationStack {
     case none
-    case full(AnyNotchActivity)
-    case split(leading: AnyNotchActivity, trailing: AnyNotchActivity)
+    case full(AnyLiveActivityPresentationProvider)
+    case split(
+        leading: AnyLiveActivityPresentationProvider,
+        trailing: AnyLiveActivityPresentationProvider
+    )
 
     var isVisible: Bool {
         if case .none = self { return false }
@@ -323,27 +553,27 @@ enum ActivityLivePresentationStack {
 
 @MainActor
 func selectedActivityLivePresentationStack(
-    from activities: [AnyNotchActivity],
+    from providers: [AnyLiveActivityPresentationProvider],
     snapshot: ActivityLivePresentationSnapshot
 ) -> ActivityLivePresentationStack {
-    let eligibleActivities = eligibleLiveActivitiesInSelectionOrder(
-        from: activities,
+    let eligibleProviders = eligibleLiveActivitiesInSelectionOrder(
+        from: providers,
         snapshot: snapshot
     )
 
     let selection: ActivityLivePresentationStack
-    switch eligibleActivities.count {
+    switch eligibleProviders.count {
     case 0:
         selection = .none
     case 1:
-        selection = .full(eligibleActivities[0])
+        selection = .full(eligibleProviders[0])
     default:
-        selection = .split(leading: eligibleActivities[1], trailing: eligibleActivities[0])
+        selection = .split(leading: eligibleProviders[1], trailing: eligibleProviders[0])
     }
 
     #if DEBUG
     ActivityLivePresentationDebugLogger.logSelectorRun(
-        eligibleActivities: eligibleActivities,
+        eligibleActivities: eligibleProviders,
         snapshot: snapshot,
         selection: selection
     )
@@ -353,13 +583,24 @@ func selectedActivityLivePresentationStack(
 }
 
 @MainActor
-private func eligibleLiveActivitiesInSelectionOrder(
+func selectedActivityLivePresentationStack(
     from activities: [AnyNotchActivity],
     snapshot: ActivityLivePresentationSnapshot
-) -> [AnyNotchActivity] {
-    activities.enumerated()
-        .filter { _, activity in
-            activity.isAvailable && activity.livePresentationState.priority != nil
+) -> ActivityLivePresentationStack {
+    selectedActivityLivePresentationStack(
+        from: activities.map { AnyLiveActivityPresentationProvider(activity: $0) },
+        snapshot: snapshot
+    )
+}
+
+@MainActor
+private func eligibleLiveActivitiesInSelectionOrder(
+    from providers: [AnyLiveActivityPresentationProvider],
+    snapshot: ActivityLivePresentationSnapshot
+) -> [AnyLiveActivityPresentationProvider] {
+    providers.enumerated()
+        .filter { _, provider in
+            provider.livePresentationState.priority != nil
         }
         .sorted { lhs, rhs in
             let lhsSequence = snapshot.startedSequence(for: lhs.element.id)
@@ -385,7 +626,7 @@ enum ActivityLivePresentationDebugLogger {
     private static var lastSelectorSignature: String?
 
     static func logRegistryChangeReceived() {
-        log("registry/activity change received; scheduling eligibility reconciliation")
+        log("provider registry change received; scheduling eligibility reconciliation")
     }
 
     static func logReconciliationStarted(recordStartsForNewEligibility: Bool) {
@@ -393,35 +634,35 @@ enum ActivityLivePresentationDebugLogger {
     }
 
     static func logBecameEligible(activityID: ActivityID, sequence: Int) {
-        log("activity became eligible id=\(activityID.rawValue) sequence=\(sequence)")
+        log("provider became eligible id=\(activityID.rawValue) sequence=\(sequence)")
     }
 
     static func logInitiallyEligible(activityID: ActivityID) {
-        log("activity initially eligible id=\(activityID.rawValue) sequence=registry-order")
+        log("provider initially eligible id=\(activityID.rawValue) sequence=registry-order")
     }
 
     static func logBecameIneligible(activityID: ActivityID) {
-        log("activity became ineligible id=\(activityID.rawValue)")
+        log("provider became ineligible id=\(activityID.rawValue)")
     }
 
     static func logReconciled(
-        activities: [AnyNotchActivity],
+        providers: [AnyLiveActivityPresentationProvider],
         snapshot: ActivityLivePresentationSnapshot
     ) {
-        let eligibleActivities = eligibleLiveActivitiesInSelectionOrder(
-            from: activities,
+        let eligibleProviders = eligibleLiveActivitiesInSelectionOrder(
+            from: providers,
             snapshot: snapshot
         )
-        log("eligible snapshot recencyOrder=[\(activityListDescription(activities: eligibleActivities, snapshot: snapshot))]")
+        log("eligible snapshot recencyOrder=[\(providerListDescription(providers: eligibleProviders, snapshot: snapshot))]")
     }
 
     static func logSelectorRun(
-        eligibleActivities: [AnyNotchActivity],
+        eligibleActivities: [AnyLiveActivityPresentationProvider],
         snapshot: ActivityLivePresentationSnapshot,
         selection: ActivityLivePresentationStack
     ) {
-        let candidates = activityListDescription(
-            activities: eligibleActivities,
+        let candidates = providerListDescription(
+            providers: eligibleActivities,
             snapshot: snapshot
         )
         let signature = "candidates=[\(candidates)] result=\(selection.debugSelectionDescription)"
@@ -434,17 +675,17 @@ enum ActivityLivePresentationDebugLogger {
         log("ContentView closed-notch presentation changed \(oldValue) -> \(newValue)")
     }
 
-    private static func activityListDescription(
-        activities: [AnyNotchActivity],
+    private static func providerListDescription(
+        providers: [AnyLiveActivityPresentationProvider],
         snapshot: ActivityLivePresentationSnapshot
     ) -> String {
-        activities
-            .map { activity in
-                let sequence = snapshot.startedSequence(for: activity.id)
+        providers
+            .map { provider in
+                let sequence = snapshot.startedSequence(for: provider.id)
                     .map(String.init) ?? "registry-order"
-                let priority = activity.livePresentationState.priority
+                let priority = provider.livePresentationState.priority
                     .map { "\($0.rawValue)" } ?? "hidden"
-                return "\(activity.id.rawValue)#seq=\(sequence)#priority=\(priority)"
+                return "\(provider.id.rawValue)#seq=\(sequence)#priority=\(priority)"
             }
             .joined(separator: ", ")
     }
