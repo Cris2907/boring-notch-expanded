@@ -474,7 +474,8 @@ struct ContentView: View {
                                 !vm.hideOnClosed {
                           ClosedActivityLivePresentationStackView(
                               stack: livePresentationStack,
-                              openLiveActivity: openLiveActivityTab
+                              openLiveActivity: openLiveActivityTab,
+                              openMediaTab: openMediaTabFromChin
                           )
                           .id(livePresentationStack.identity)
                           .transition(.opacity)
@@ -635,6 +636,18 @@ struct ContentView: View {
             return .activities
         default:
             return nil
+        }
+    }
+
+    private func openMediaTabFromChin() {
+        guard vm.notchState == .closed,
+              Defaults[.openNotchOnHover],
+              Defaults[.openMediaTabOnChinHover],
+              !coordinator.sneakPeek.show,
+              coordinator.currentView != .home else { return }
+
+        withAnimation(.smooth(duration: 0.25)) {
+            coordinator.currentView = .home
         }
     }
 
@@ -852,6 +865,7 @@ struct MediaMinimalLivePresentationView: View {
 private struct ClosedActivityLivePresentationStackView: View {
     let stack: ActivityLivePresentationStack
     let openLiveActivity: (ActivityID) -> Void
+    let openMediaTab: () -> Void
 
     var body: some View {
         switch stack {
@@ -860,13 +874,15 @@ private struct ClosedActivityLivePresentationStackView: View {
         case .full(let activity):
             ClosedActivityFullLivePresentationView(
                 activity: activity,
-                openLiveActivity: openLiveActivity
+                openLiveActivity: openLiveActivity,
+                openMediaTab: openMediaTab
             )
         case .split(let leading, let trailing):
             ClosedActivitySplitLivePresentationView(
                 leadingActivity: leading,
                 trailingActivity: trailing,
-                openLiveActivity: openLiveActivity
+                openLiveActivity: openLiveActivity,
+                openMediaTab: openMediaTab
             )
         }
     }
@@ -876,6 +892,7 @@ private struct ClosedActivityFullLivePresentationView: View {
     @EnvironmentObject private var vm: BoringViewModel
     @ObservedObject var activity: AnyLiveActivityPresentationProvider
     let openLiveActivity: (ActivityID) -> Void
+    let openMediaTab: () -> Void
 
     var body: some View {
         let accessorySize = max(0, vm.effectiveClosedNotchHeight - 12)
@@ -886,6 +903,11 @@ private struct ClosedActivityFullLivePresentationView: View {
         HStack(spacing: 8) {
             activity.makeAccessoryView()
                 .frame(width: accessorySize, height: accessorySize)
+                .contentShape(Rectangle())
+                .onHover { hovering in
+                    guard hovering else { return }
+                    openLiveActivity(activity.id)
+                }
 
             Rectangle()
                 .fill(.black)
@@ -895,16 +917,21 @@ private struct ClosedActivityFullLivePresentationView: View {
                         vm.closedNotchSize.width - cornerRadiusInsets.closed.top
                     )
                 )
+                .contentShape(Rectangle())
+                .onHover { hovering in
+                    guard hovering else { return }
+                    openMediaTab()
+                }
 
             activity.makeFullView()
                 .frame(width: contentWidth, alignment: .leading)
+                .contentShape(Rectangle())
+                .onHover { hovering in
+                    guard hovering else { return }
+                    openLiveActivity(activity.id)
+                }
         }
         .frame(height: vm.effectiveClosedNotchHeight, alignment: .center)
-        .contentShape(Rectangle())
-        .onHover { hovering in
-            guard hovering else { return }
-            openLiveActivity(activity.id)
-        }
     }
 }
 
@@ -913,6 +940,7 @@ private struct ClosedActivitySplitLivePresentationView: View {
     @ObservedObject var leadingActivity: AnyLiveActivityPresentationProvider
     @ObservedObject var trailingActivity: AnyLiveActivityPresentationProvider
     let openLiveActivity: (ActivityID) -> Void
+    let openMediaTab: () -> Void
 
     var body: some View {
         HStack(spacing: 8) {
@@ -931,6 +959,11 @@ private struct ClosedActivitySplitLivePresentationView: View {
                         vm.closedNotchSize.width - cornerRadiusInsets.closed.top
                     )
                 )
+                .contentShape(Rectangle())
+                .onHover { hovering in
+                    guard hovering else { return }
+                    openMediaTab()
+                }
 
             ClosedActivityMinimalLivePresentationView(
                 activity: trailingActivity,

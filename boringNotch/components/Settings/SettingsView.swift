@@ -417,6 +417,10 @@ struct GeneralSettings: View {
             Defaults.Toggle(key: .openNotchOnHover) {
                 Text("Open notch on hover")
             }
+            Defaults.Toggle(key: .openMediaTabOnChinHover) {
+                Text("Open media from chin center")
+            }
+            .disabled(!openNotchOnHover)
             Defaults.Toggle(key: .enableHaptics) {
                     Text("Enable haptic feedback")
             }
