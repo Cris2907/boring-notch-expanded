@@ -626,6 +626,47 @@ final class ActivityArchitectureTests: XCTestCase {
         )
     }
 
+    func testTimeProviderMinimalPresentationUsesAccessoryOnlySizing() throws {
+        let accessorySize: CGFloat = 20
+        let now = Date(timeIntervalSince1970: 40_000)
+        let suiteName = "TimeProviderMinimalSizing.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let manager = TimeActivityManager(
+            defaults: defaults,
+            now: { now },
+            observeLifecycle: false,
+            playCompletionSound: {}
+        )
+        XCTAssertTrue(manager.startTimer(duration: 60))
+
+        let timeProvider = TimeLiveActivityProvider(manager: manager, isEnabled: true)
+        let contentProvider = LiveTestProvider(
+            id: ActivityID("content-only"),
+            state: .visible(priority: .normal),
+            showsAccessoryInMinimalPresentation: false,
+            livePresentationSizing: LiveActivityPresentationSizing(
+                minimalContentWidth: .fixed(12)
+            )
+        )
+        let stack = selectedActivityLivePresentationStack(
+            from: [
+                AnyLiveActivityPresentationProvider(timeProvider),
+                AnyLiveActivityPresentationProvider(contentProvider)
+            ],
+            snapshot: ActivityLivePresentationSnapshot(startedSequences: [
+                .time: 2,
+                contentProvider.id: 1
+            ])
+        )
+
+        XCTAssertEqual(
+            stack.requiredAdditionalWidth(accessorySize: accessorySize),
+            accessorySize + 12 + 20
+        )
+    }
+
     func testTransientInterruptionPreservesSelectedStackInDiagnostics() throws {
         let provider = LiveTestProvider(
             id: .pomodoro,

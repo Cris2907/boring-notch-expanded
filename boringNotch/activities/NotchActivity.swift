@@ -337,10 +337,9 @@ extension ActivityID {
 final class TimeLiveActivityProvider: LiveActivityPresentationProvider {
     let id = ActivityID.time
     let name = "Timer"
-    let showsAccessoryInMinimalPresentation = false
     let livePresentationSizing = LiveActivityPresentationSizing(
         fullContentWidth: .fixed(closedTimeActivityMinimumTextWidth),
-        minimalContentWidth: .fixed(closedTimeActivityMinimumTextWidth)
+        minimalContentWidth: .fixed(0)
     )
 
     private let manager: TimeActivityManager
@@ -395,7 +394,7 @@ final class TimeLiveActivityProvider: LiveActivityPresentationProvider {
     }
 
     func makeMinimalView() -> some View {
-        TimeMinimalLivePresentationView(manager: manager)
+        EmptyView()
     }
 }
 
