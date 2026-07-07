@@ -46,6 +46,7 @@ struct ContentView: View {
 
     private let extendedHoverPadding: CGFloat = 30
     private let zeroHeightHoverPadding: CGFloat = 10
+    private let activityLivePresentationContentWidth: CGFloat = 64
 
     private var requiredWindowHeight: CGFloat {
         notchWindowHeight(for: vm.notchSize.height)
@@ -66,7 +67,9 @@ struct ContentView: View {
         )
     }
 
-    private var computedChinWidth: CGFloat {
+    private func computedChinWidth(
+        livePresentation: AnyNotchActivity?
+    ) -> CGFloat {
         var chinWidth: CGFloat = vm.closedNotchSize.width
 
         if coordinator.expandingView.type == .battery && coordinator.expandingView.show
@@ -76,7 +79,8 @@ struct ContentView: View {
         } else if shouldShowBluetoothActivity && vm.notchState == .closed && !vm.hideOnClosed
         {
             chinWidth += bluetoothSneakSize.width
-        } else if shouldShowMediaActivity && vm.notchState == .closed && !vm.hideOnClosed
+        } else if clockShowInClosedNotch && timeActivityManager.hasSession
+            && shouldShowMediaActivity && vm.notchState == .closed && !vm.hideOnClosed
         {
             chinWidth += (2 * max(0, vm.effectiveClosedNotchHeight - 12) + 20)
         } else if clockShowInClosedNotch && timeActivityManager.hasSession
@@ -87,6 +91,16 @@ struct ContentView: View {
                     + closedTimeActivityMinimumTextWidth
                     + 20
             )
+        } else if livePresentation != nil && vm.notchState == .closed && !vm.hideOnClosed
+        {
+            chinWidth += (
+                max(0, vm.effectiveClosedNotchHeight - 12)
+                    + activityLivePresentationContentWidth
+                    + 20
+            )
+        } else if shouldShowMediaActivity && vm.notchState == .closed && !vm.hideOnClosed
+        {
+            chinWidth += (2 * max(0, vm.effectiveClosedNotchHeight - 12) + 20)
         } else if !coordinator.expandingView.show && vm.notchState == .closed
             && (!musicManager.isPlaying && musicManager.isPlayerIdle) && Defaults[.showNotHumanFace]
             && !vm.hideOnClosed
@@ -110,6 +124,10 @@ struct ContentView: View {
     }
 
     var body: some View {
+        let livePresentation = selectedActivityLivePresentation(
+            from: activityRegistry.activities
+        )
+
         // Calculate scale based on gesture progress only
         let gestureScale: CGFloat = {
             guard gestureProgress != 0 else { return 1.0 }
@@ -119,7 +137,7 @@ struct ContentView: View {
         
         ZStack(alignment: .top) {
             VStack(spacing: 0) {
-                let mainLayout = NotchLayout()
+                let mainLayout = NotchLayout(livePresentation: livePresentation)
                     .frame(alignment: .top)
                     .padding(
                         .horizontal,
@@ -253,7 +271,10 @@ struct ContentView: View {
                 if vm.chinHeight > 0 {
                     Rectangle()
                         .fill(Color.black.opacity(0.01))
-                        .frame(width: computedChinWidth, height: vm.chinHeight)
+                        .frame(
+                            width: computedChinWidth(livePresentation: livePresentation),
+                            height: vm.chinHeight
+                        )
                 }
             }
         }
@@ -299,7 +320,7 @@ struct ContentView: View {
     }
 
     @ViewBuilder
-    func NotchLayout() -> some View {
+    func NotchLayout(livePresentation: AnyNotchActivity?) -> some View {
         VStack(alignment: .leading) {
             VStack(alignment: .leading) {
                 if coordinator.helloAnimationRunning {
@@ -360,6 +381,15 @@ struct ContentView: View {
                               showMedia: shouldShowMediaActivity,
                               albumArtNamespace: albumArtNamespace
                           )
+                          .transition(.opacity)
+                      } else if let livePresentation,
+                                vm.notchState == .closed,
+                                !vm.hideOnClosed {
+                          ClosedActivityLivePresentationView(
+                              activity: livePresentation,
+                              contentWidth: activityLivePresentationContentWidth
+                          )
+                          .id(livePresentation.id)
                           .transition(.opacity)
                       } else if shouldShowMediaActivity && vm.notchState == .closed && !vm.hideOnClosed {
                           MusicLiveActivity()
@@ -718,6 +748,61 @@ struct ContentView: View {
                 haptics.toggle()
             }
         }
+    }
+}
+
+@MainActor
+func selectedActivityLivePresentation(
+    from activities: [AnyNotchActivity]
+) -> AnyNotchActivity? {
+    var selection: AnyNotchActivity?
+    var selectedPriority: ActivityLivePresentationPriority?
+
+    for activity in activities where activity.isAvailable {
+        guard let priority = activity.livePresentationState.priority else { continue }
+        guard let currentPriority = selectedPriority else {
+            selection = activity
+            selectedPriority = priority
+            continue
+        }
+        if priority > currentPriority {
+            selection = activity
+            selectedPriority = priority
+        }
+    }
+
+    return selection
+}
+
+private struct ClosedActivityLivePresentationView: View {
+    @EnvironmentObject private var vm: BoringViewModel
+    @ObservedObject var activity: AnyNotchActivity
+
+    let contentWidth: CGFloat
+
+    var body: some View {
+        let accessorySize = max(0, vm.effectiveClosedNotchHeight - 12)
+
+        HStack(spacing: 8) {
+            Image(systemName: activity.metadata.systemImage)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(activity.metadata.tint)
+                .frame(width: accessorySize, height: accessorySize)
+                .accessibilityHidden(true)
+
+            Rectangle()
+                .fill(.black)
+                .frame(
+                    width: max(
+                        0,
+                        vm.closedNotchSize.width - cornerRadiusInsets.closed.top
+                    )
+                )
+
+            activity.makeLivePresentationView()
+                .frame(width: contentWidth, alignment: .leading)
+        }
+        .frame(height: vm.effectiveClosedNotchHeight, alignment: .center)
     }
 }
 

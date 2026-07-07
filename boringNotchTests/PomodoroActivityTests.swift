@@ -32,6 +32,7 @@ final class PomodoroActivityTests: XCTestCase {
         XCTAssertEqual(registered.metadata.systemImage, "timer")
         XCTAssertTrue(registered.isAvailable)
         XCTAssertTrue(registered.supportsCompactPresentation)
+        XCTAssertEqual(registered.livePresentationState, .hidden)
         XCTAssertTrue(registered.supportsConfiguration)
     }
 
@@ -62,12 +63,35 @@ final class PomodoroActivityTests: XCTestCase {
         XCTAssertFalse(activity.isActive)
         manager.start()
         XCTAssertTrue(activity.isActive)
+        XCTAssertEqual(activity.livePresentationState, .visible(priority: .normal))
         manager.pause()
         XCTAssertTrue(activity.isActive)
+        XCTAssertEqual(activity.livePresentationState, .visible(priority: .low))
         manager.reset()
         XCTAssertFalse(activity.isActive)
+        XCTAssertEqual(activity.livePresentationState, .hidden)
         XCTAssertGreaterThanOrEqual(updates, 3)
         withExtendedLifetime(observation) {}
+    }
+
+    func testPausedLivePresentationKeepsTimestampDerivedRemainingTime() throws {
+        let manager = makeManager()
+        let registry = try ActivityRegistry {
+            PomodoroActivity(manager: manager)
+        }
+        let activity = try XCTUnwrap(registry.activity(for: .pomodoro))
+
+        manager.start()
+        advance(by: 3)
+        manager.pause()
+        advance(by: 100)
+
+        XCTAssertEqual(activity.livePresentationState, .visible(priority: .low))
+        XCTAssertEqual(manager.remaining(at: now), 7, accuracy: 0.001)
+        XCTAssertEqual(
+            selectedActivityLivePresentation(from: registry.activities)?.id,
+            .pomodoro
+        )
     }
 
     func testStandardConfigurationDurations() {
@@ -90,6 +114,8 @@ final class PomodoroActivityTests: XCTestCase {
         XCTAssertEqual(manager.snapshot?.kind, .shortBreak)
         XCTAssertEqual(manager.snapshot?.phase, .ready)
         XCTAssertEqual(manager.completedFocusSessions, 1)
+        let activity = PomodoroActivity(manager: manager)
+        XCTAssertEqual(activity.livePresentationState, .hidden)
     }
 
     func testFourthCompletedFocusTransitionsToLongBreak() {

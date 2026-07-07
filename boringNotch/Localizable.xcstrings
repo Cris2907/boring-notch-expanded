@@ -702,6 +702,9 @@
         }
       }
     },
+    "%@, %@ remaining" : {
+
+    },
     "%d%%" : {
       "localizations" : {
         "ar" : {
@@ -901,6 +904,9 @@
           }
         }
       }
+    },
+    "%lld focuses completed" : {
+
     },
     "%lld min" : {
 
@@ -1304,6 +1310,9 @@
           }
         }
       }
+    },
+    "1 focus completed" : {
+
     },
     "About" : {
       "localizations" : {
@@ -3114,6 +3123,9 @@
           }
         }
       }
+    },
+    "Automatically start next session" : {
+
     },
     "Automatically switch displays" : {
       "localizations" : {
@@ -7031,6 +7043,9 @@
         }
       }
     },
+    "Cycle" : {
+
+    },
     "Default" : {
       "localizations" : {
         "ar" : {
@@ -7949,6 +7964,12 @@
           }
         }
       }
+    },
+    "Duration changes apply to the next session, not one already running or paused." : {
+
+    },
+    "Durations" : {
+
     },
     "Easily copy, store, and manage your most-used content. Upgrade now for advanced features like multi-item storage and quick access!" : {
       "localizations" : {
@@ -9151,6 +9172,9 @@
         }
       }
     },
+    "Example Activity" : {
+
+    },
     "Expanded drag detection area" : {
       "localizations" : {
         "ar" : {
@@ -9651,6 +9675,12 @@
           }
         }
       }
+    },
+    "Focus" : {
+
+    },
+    "Focuses before long break" : {
+
     },
     "Full screen behavior" : {
       "localizations" : {
@@ -12073,6 +12103,12 @@
           }
         }
       }
+    },
+    "Long break" : {
+
+    },
+    "Long Break" : {
+
     },
     "Lottie JSON URL" : {
       "localizations" : {
@@ -16187,6 +16223,12 @@
     "Pause" : {
       "extractionState" : "manual"
     },
+    "Pause Pomodoro" : {
+
+    },
+    "Paused" : {
+
+    },
     "Pick a Color" : {
       "localizations" : {
         "ar" : {
@@ -16389,6 +16431,12 @@
           }
         }
       }
+    },
+    "Pomodoro" : {
+
+    },
+    "Pomodoro controls" : {
+
     },
     "Preferred display" : {
       "localizations" : {
@@ -16989,6 +17037,9 @@
           }
         }
       }
+    },
+    "Ready" : {
+
     },
     "Release name" : {
       "localizations" : {
@@ -17793,6 +17844,9 @@
     "Reset" : {
       "extractionState" : "manual"
     },
+    "Reset Pomodoro" : {
+
+    },
     "Reset stopwatch" : {
       "extractionState" : "manual"
     },
@@ -18099,6 +18153,9 @@
     },
     "Resume" : {
       "extractionState" : "manual"
+    },
+    "Resume Pomodoro" : {
+
     },
     "Running" : {
       "extractionState" : "stale",
@@ -18706,6 +18763,12 @@
     },
     "Shelf page" : {
       "extractionState" : "manual"
+    },
+    "Short break" : {
+
+    },
+    "Short Break" : {
+
     },
     "Shortcuts" : {
       "localizations" : {
@@ -20320,6 +20383,9 @@
         }
       }
     },
+    "Skip session" : {
+
+    },
     "Slider color" : {
       "localizations" : {
         "ar" : {
@@ -20924,6 +20990,12 @@
       "extractionState" : "manual"
     },
     "Start %lld minute timer" : {
+
+    },
+    "Start next session" : {
+
+    },
+    "Start Pomodoro" : {
 
     },
     "Start stopwatch" : {
@@ -23780,52 +23852,6 @@
           }
         }
       }
-    },
-    "%@, %@ remaining" : {
-    },
-    "%lld focuses completed" : {
-    },
-    "1 focus completed" : {
-    },
-    "Automatically start next session" : {
-    },
-    "Cycle" : {
-    },
-    "Duration changes apply to the next session, not one already running or paused." : {
-    },
-    "Durations" : {
-    },
-    "Focus" : {
-    },
-    "Focuses before long break" : {
-    },
-    "Long Break" : {
-    },
-    "Long break" : {
-    },
-    "Pause Pomodoro" : {
-    },
-    "Paused" : {
-    },
-    "Pomodoro" : {
-    },
-    "Pomodoro controls" : {
-    },
-    "Ready" : {
-    },
-    "Reset Pomodoro" : {
-    },
-    "Resume Pomodoro" : {
-    },
-    "Short Break" : {
-    },
-    "Short break" : {
-    },
-    "Skip session" : {
-    },
-    "Start next session" : {
-    },
-    "Start Pomodoro" : {
     }
   },
   "version" : "1.0"

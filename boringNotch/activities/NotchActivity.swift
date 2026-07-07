@@ -34,10 +34,34 @@ struct ActivityMetadata {
     }
 }
 
+enum ActivityLivePresentationPriority: Int, Comparable, Sendable {
+    case low = 0
+    case normal = 100
+    case high = 200
+
+    static func < (
+        lhs: ActivityLivePresentationPriority,
+        rhs: ActivityLivePresentationPriority
+    ) -> Bool {
+        lhs.rawValue < rhs.rawValue
+    }
+}
+
+enum ActivityLivePresentationState: Equatable, Sendable {
+    case hidden
+    case visible(priority: ActivityLivePresentationPriority)
+
+    var priority: ActivityLivePresentationPriority? {
+        guard case .visible(let priority) = self else { return nil }
+        return priority
+    }
+}
+
 @MainActor
 protocol NotchActivity: ObservableObject {
     associatedtype ExpandedContent: View
     associatedtype CompactContent: View = EmptyView
+    associatedtype LivePresentationContent: View = EmptyView
     associatedtype ConfigurationContent: View = EmptyView
 
     var id: ActivityID { get }
@@ -45,10 +69,12 @@ protocol NotchActivity: ObservableObject {
     var isAvailable: Bool { get }
     var isActive: Bool { get }
     var supportsCompactPresentation: Bool { get }
+    var livePresentationState: ActivityLivePresentationState { get }
     var supportsConfiguration: Bool { get }
 
     @ViewBuilder func makeExpandedView() -> ExpandedContent
     @ViewBuilder func makeCompactView() -> CompactContent
+    @ViewBuilder func makeLivePresentationView() -> LivePresentationContent
     @ViewBuilder func makeConfigurationView() -> ConfigurationContent
 
     func activityDidAppear()
@@ -59,6 +85,7 @@ extension NotchActivity {
     var isAvailable: Bool { true }
     var isActive: Bool { false }
     var supportsCompactPresentation: Bool { false }
+    var livePresentationState: ActivityLivePresentationState { .hidden }
     var supportsConfiguration: Bool { false }
 
     func activityDidAppear() {}
@@ -67,6 +94,12 @@ extension NotchActivity {
 
 extension NotchActivity where CompactContent == EmptyView {
     func makeCompactView() -> EmptyView {
+        EmptyView()
+    }
+}
+
+extension NotchActivity where LivePresentationContent == EmptyView {
+    func makeLivePresentationView() -> EmptyView {
         EmptyView()
     }
 }
@@ -87,9 +120,11 @@ final class AnyNotchActivity: @MainActor ObservableObject, Identifiable {
     private let availability: () -> Bool
     private let activeState: () -> Bool
     private let compactPresentationSupport: () -> Bool
+    private let livePresentation: () -> ActivityLivePresentationState
     private let configurationSupport: () -> Bool
     private let expandedView: () -> AnyView
     private let compactView: () -> AnyView
+    private let livePresentationView: () -> AnyView
     private let configurationView: () -> AnyView
     private let didAppear: () -> Void
     private let didDisappear: () -> Void
@@ -101,9 +136,11 @@ final class AnyNotchActivity: @MainActor ObservableObject, Identifiable {
         availability = { activity.isAvailable }
         activeState = { activity.isActive }
         compactPresentationSupport = { activity.supportsCompactPresentation }
+        livePresentation = { activity.livePresentationState }
         configurationSupport = { activity.supportsConfiguration }
         expandedView = { AnyView(activity.makeExpandedView()) }
         compactView = { AnyView(activity.makeCompactView()) }
+        livePresentationView = { AnyView(activity.makeLivePresentationView()) }
         configurationView = { AnyView(activity.makeConfigurationView()) }
         didAppear = activity.activityDidAppear
         didDisappear = activity.activityDidDisappear
@@ -116,10 +153,12 @@ final class AnyNotchActivity: @MainActor ObservableObject, Identifiable {
     var isAvailable: Bool { availability() }
     var isActive: Bool { activeState() }
     var supportsCompactPresentation: Bool { compactPresentationSupport() }
+    var livePresentationState: ActivityLivePresentationState { livePresentation() }
     var supportsConfiguration: Bool { configurationSupport() }
 
     func makeExpandedView() -> AnyView { expandedView() }
     func makeCompactView() -> AnyView { compactView() }
+    func makeLivePresentationView() -> AnyView { livePresentationView() }
     func makeConfigurationView() -> AnyView { configurationView() }
 
     func activityDidAppear() { didAppear() }

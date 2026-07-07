@@ -28,6 +28,16 @@ final class PomodoroActivity: NotchActivity {
 
     var isActive: Bool { manager.isActive }
     var supportsCompactPresentation: Bool { true }
+    var livePresentationState: ActivityLivePresentationState {
+        switch manager.snapshot?.phase {
+        case .running:
+            return .visible(priority: .normal)
+        case .paused:
+            return .visible(priority: .low)
+        case .ready, nil:
+            return .hidden
+        }
+    }
     var supportsConfiguration: Bool { true }
 
     func makeExpandedView() -> some View {
@@ -36,6 +46,10 @@ final class PomodoroActivity: NotchActivity {
 
     func makeCompactView() -> some View {
         PomodoroCompactView(manager: manager)
+    }
+
+    func makeLivePresentationView() -> some View {
+        PomodoroLivePresentationView(manager: manager)
     }
 
     func makeConfigurationView() -> some View {

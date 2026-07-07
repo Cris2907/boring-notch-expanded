@@ -204,6 +204,40 @@ struct PomodoroCompactView: View {
     }
 }
 
+struct PomodoroLivePresentationView: View {
+    @ObservedObject var manager: PomodoroManager
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1, paused: !isRunning)) { timeline in
+            if let snapshot = manager.snapshot {
+                HStack(spacing: 5) {
+                    if snapshot.phase == .paused {
+                        Image(systemName: "pause.fill")
+                            .font(.system(size: 9, weight: .bold))
+                    }
+
+                    Text(PomodoroTimeFormatter.remaining(snapshot.remaining(at: timeline.date)))
+                        .monospacedDigit()
+                }
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundStyle(snapshot.kind.tint)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(
+                    String(
+                        localized: "\(snapshot.kind.label), \(PomodoroTimeFormatter.remaining(snapshot.remaining(at: timeline.date))) remaining"
+                    )
+                )
+            }
+        }
+    }
+
+    private var isRunning: Bool {
+        manager.snapshot?.phase == .running
+    }
+}
+
 struct PomodoroSettingsView: View {
     @Default(.pomodoroFocusMinutes) private var focusMinutes
     @Default(.pomodoroShortBreakMinutes) private var shortBreakMinutes

@@ -16,7 +16,7 @@ Every activity provides:
 - `isAvailable`, which determines whether it appears in activity navigation.
 - `isActive`, which represents ongoing work such as a running timer. It is independent of the currently selected page.
 
-Compact presentation, configuration, and appearance lifecycle callbacks are optional.
+Compact presentation, closed-notch live presentation, configuration, and appearance lifecycle callbacks are optional.
 
 ## When a feature should be an Activity
 
@@ -57,7 +57,27 @@ func makeCompactView() -> some View {
 
 The current closed-notch shell still owns the established priority between battery, Bluetooth, HUD, timer, music, and idle content. Registering an activity does not automatically insert its compact view into that chain yet. Compact integration should be added when an existing compact feature is migrated and its priority and sizing behavior can be preserved explicitly.
 
-Pomodoro provides a compact view as a future integration example, but it is intentionally disconnected from production closed-notch rendering until that priority policy is exposed through the Activity architecture.
+`makeCompactView()` remains a generic alternate presentation and is separate from the live-presentation API below. Pomodoro keeps its compact view as an example, but production closed-notch rendering uses its live presentation instead.
+
+## Closed-notch live presentations
+
+Use a live presentation for contextual, ongoing information that should appear around the closed notch. Activities publish visibility explicitly; `isActive` does not make a live presentation visible automatically.
+
+```swift
+var livePresentationState: ActivityLivePresentationState {
+    isRunning ? .visible(priority: .normal) : .hidden
+}
+
+func makeLivePresentationView() -> some View {
+    RemainingTimeView()
+}
+```
+
+The available priorities are `.low`, `.normal`, and `.high`. The rendering boundary selects the visible, available activity with the highest priority. Registration order deterministically wins a tie. Priority only arbitrates between registered activities; the core retains control of system and legacy content. The current order is battery, Bluetooth, HUD, legacy Timer, the selected activity presentation, Media, then idle content.
+
+The core supplies the metadata icon, physical-notch spacing, and fixed content dimensions. Live views must not resize the notch, change navigation, or reach into `ContentView`. Keep live content inexpensive: update only while its displayed data changes and derive elapsed time from timestamps rather than accumulated ticks.
+
+Pomodoro publishes a normal-priority presentation with remaining time while running, a low-priority static presentation while paused, and hides it while ready or inactive. Media remains on its existing path and is not a registered activity live presentation.
 
 ## State and lifecycle
 
@@ -92,7 +112,7 @@ func makeConfigurationView() -> some View {
 1. Create an `ObservableObject` conforming to `NotchActivity`.
 2. Choose a permanent ID and metadata.
 3. Return the expanded SwiftUI view.
-4. Add compact content, configuration, or lifecycle callbacks only when needed.
+4. Add compact content, live presentation, configuration, or lifecycle callbacks only when needed.
 5. Register the activity in `ActivityRegistry.shared`.
 6. Add the Swift file to the app target and add focused tests for ID, availability, state, and navigation behavior.
 7. Build and run the macOS tests.

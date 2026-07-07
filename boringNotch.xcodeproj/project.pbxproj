@@ -119,16 +119,6 @@
 		A10000040000000000000001 /* TimeActivityManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000030000000000000001 /* TimeActivityManager.swift */; };
 		A10000060000000000000001 /* TimeActivityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000050000000000000001 /* TimeActivityView.swift */; };
 		A10000110000000000000001 /* TimeActivityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000100000000000000001 /* TimeActivityTests.swift */; };
-		C1A100012F00000100000001 /* NotchActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A100112F00000100000001 /* NotchActivity.swift */; };
-		C1A100022F00000100000001 /* ActivityRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A100122F00000100000001 /* ActivityRegistry.swift */; };
-		C1A100032F00000100000001 /* ExampleActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A100132F00000100000001 /* ExampleActivity.swift */; };
-		C1A100042F00000100000001 /* ActivityArchitectureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A100142F00000100000001 /* ActivityArchitectureTests.swift */; };
-		C1A100052F00000100000001 /* CalendarActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A100152F00000100000001 /* CalendarActivity.swift */; };
-		C1A200012F00000100000001 /* PomodoroActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A200112F00000100000001 /* PomodoroActivity.swift */; };
-		C1A200022F00000100000001 /* PomodoroSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A200122F00000100000001 /* PomodoroSession.swift */; };
-		C1A200032F00000100000001 /* PomodoroManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A200132F00000100000001 /* PomodoroManager.swift */; };
-		C1A200042F00000100000001 /* PomodoroActivityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A200142F00000100000001 /* PomodoroActivityView.swift */; };
-		C1A200052F00000100000001 /* PomodoroActivityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A200152F00000100000001 /* PomodoroActivityTests.swift */; };
 		B10348D92C74E56000475897 /* ConditionalModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10348D82C74E56000475897 /* ConditionalModifier.swift */; };
 		B10F84A32C6C9596009F3026 /* TestView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10F84A22C6C9596009F3026 /* TestView.swift */; };
 		B141C2412CA5F53F00AC8CC8 /* SparkleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B141C2402CA5F53E00AC8CC8 /* SparkleView.swift */; };
@@ -161,6 +151,16 @@
 		C0DEB1000000000000000003 /* BluetoothDeviceActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEB1000000000000000013 /* BluetoothDeviceActivity.swift */; };
 		C0DEB1000000000000000004 /* IOBluetooth.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C0DEB1000000000000000014 /* IOBluetooth.framework */; };
 		C0DEB1000000000000000005 /* BluetoothHeadphoneProfileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEB1000000000000000015 /* BluetoothHeadphoneProfileTests.swift */; };
+		C1A100012F00000100000001 /* NotchActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A100112F00000100000001 /* NotchActivity.swift */; };
+		C1A100022F00000100000001 /* ActivityRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A100122F00000100000001 /* ActivityRegistry.swift */; };
+		C1A100032F00000100000001 /* ExampleActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A100132F00000100000001 /* ExampleActivity.swift */; };
+		C1A100042F00000100000001 /* ActivityArchitectureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A100142F00000100000001 /* ActivityArchitectureTests.swift */; };
+		C1A100052F00000100000001 /* CalendarActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A100152F00000100000001 /* CalendarActivity.swift */; };
+		C1A200012F00000100000001 /* PomodoroActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A200112F00000100000001 /* PomodoroActivity.swift */; };
+		C1A200022F00000100000001 /* PomodoroSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A200122F00000100000001 /* PomodoroSession.swift */; };
+		C1A200032F00000100000001 /* PomodoroManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A200132F00000100000001 /* PomodoroManager.swift */; };
+		C1A200042F00000100000001 /* PomodoroActivityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A200142F00000100000001 /* PomodoroActivityView.swift */; };
+		C1A200052F00000100000001 /* PomodoroActivityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A200152F00000100000001 /* PomodoroActivityTests.swift */; };
 		F38DE6482D8243E7008B5C6D /* BatteryActivityManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F38DE6472D8243E2008B5C6D /* BatteryActivityManager.swift */; };
 /* End PBXBuildFile section */
 
@@ -756,26 +756,6 @@
 			path = Onboarding;
 			sourceTree = "<group>";
 		};
-		C1A100202F00000100000001 /* activities */ = {
-			isa = PBXGroup;
-			children = (
-				C1A100112F00000100000001 /* NotchActivity.swift */,
-				C1A100122F00000100000001 /* ActivityRegistry.swift */,
-				C1A100132F00000100000001 /* ExampleActivity.swift */,
-				C1A100152F00000100000001 /* CalendarActivity.swift */,
-				C1A200112F00000100000001 /* PomodoroActivity.swift */,
-			);
-			path = activities;
-			sourceTree = "<group>";
-		};
-		C1A200202F00000100000001 /* Pomodoro */ = {
-			isa = PBXGroup;
-			children = (
-				C1A200142F00000100000001 /* PomodoroActivityView.swift */,
-			);
-			path = Pomodoro;
-			sourceTree = "<group>";
-		};
 		B15063502C63D3F600EBB0E3 /* extensions */ = {
 			isa = PBXGroup;
 			children = (
@@ -861,6 +841,26 @@
 				B1C4489A2C97376A001F0858 /* TipStore.swift */,
 			);
 			path = Tips;
+			sourceTree = "<group>";
+		};
+		C1A100202F00000100000001 /* activities */ = {
+			isa = PBXGroup;
+			children = (
+				C1A100112F00000100000001 /* NotchActivity.swift */,
+				C1A100122F00000100000001 /* ActivityRegistry.swift */,
+				C1A100132F00000100000001 /* ExampleActivity.swift */,
+				C1A100152F00000100000001 /* CalendarActivity.swift */,
+				C1A200112F00000100000001 /* PomodoroActivity.swift */,
+			);
+			path = activities;
+			sourceTree = "<group>";
+		};
+		C1A200202F00000100000001 /* Pomodoro */ = {
+			isa = PBXGroup;
+			children = (
+				C1A200142F00000100000001 /* PomodoroActivityView.swift */,
+			);
+			path = Pomodoro;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -1382,6 +1382,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
+				AUTOMATION_APPLE_EVENTS = NO;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION = YES;
 				CODE_SIGN_ENTITLEMENTS = boringNotch/boringNotch.entitlements;
@@ -1391,10 +1392,16 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"boringNotch/Preview Content\"";
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = NRQZSR98DY;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
+				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
+				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
+				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = NO;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(PROJECT_DIR)/mediaremote-adapter",
@@ -1420,6 +1427,12 @@
 				PRODUCT_MODULE_NAME = boringNotch;
 				PRODUCT_NAME = NotSoBoringNotch;
 				PROVISIONING_PROFILE_SPECIFIER = "";
+				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = NO;
+				RUNTIME_EXCEPTION_ALLOW_JIT = NO;
+				RUNTIME_EXCEPTION_ALLOW_UNSIGNED_EXECUTABLE_MEMORY = NO;
+				RUNTIME_EXCEPTION_DEBUGGING_TOOL = NO;
+				RUNTIME_EXCEPTION_DISABLE_EXECUTABLE_PAGE_PROTECTION = NO;
+				RUNTIME_EXCEPTION_DISABLE_LIBRARY_VALIDATION = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_STRICT_CONCURRENCY = targeted;
 				SWIFT_VERSION = 5.0;
@@ -1436,6 +1449,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
+				AUTOMATION_APPLE_EVENTS = NO;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION = YES;
 				CODE_SIGN_ENTITLEMENTS = boringNotch/boringNotch.entitlements;
@@ -1445,9 +1459,16 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"boringNotch/Preview Content\"";
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = NRQZSR98DY;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
+				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
+				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
+				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = NO;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(PROJECT_DIR)/mediaremote-adapter",
@@ -1473,6 +1494,12 @@
 				PRODUCT_MODULE_NAME = boringNotch;
 				PRODUCT_NAME = NotSoBoringNotch;
 				PROVISIONING_PROFILE_SPECIFIER = "";
+				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = NO;
+				RUNTIME_EXCEPTION_ALLOW_JIT = NO;
+				RUNTIME_EXCEPTION_ALLOW_UNSIGNED_EXECUTABLE_MEMORY = NO;
+				RUNTIME_EXCEPTION_DEBUGGING_TOOL = NO;
+				RUNTIME_EXCEPTION_DISABLE_EXECUTABLE_PAGE_PROTECTION = NO;
+				RUNTIME_EXCEPTION_DISABLE_LIBRARY_VALIDATION = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_STRICT_CONCURRENCY = targeted;
 				SWIFT_VERSION = 5.0;

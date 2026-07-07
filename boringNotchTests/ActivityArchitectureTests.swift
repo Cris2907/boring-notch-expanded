@@ -81,9 +81,88 @@ final class ActivityArchitectureTests: XCTestCase {
 
         let _: AnyView = erased.makeExpandedView()
         let _: AnyView = erased.makeCompactView()
+        let _: AnyView = erased.makeLivePresentationView()
         XCTAssertTrue(erased.supportsCompactPresentation)
+        XCTAssertEqual(erased.livePresentationState, .hidden)
         XCTAssertFalse(erased.supportsConfiguration)
         XCTAssertFalse(ActivityRegistry.shared.activities.contains { $0.id == example.id })
+    }
+
+    func testLiveSelectionRequiresExplicitVisibilityAndAvailability() throws {
+        let activeButHidden = LiveTestActivity(
+            id: "active-hidden",
+            state: .hidden,
+            isActive: true
+        )
+        let unavailable = LiveTestActivity(
+            id: "unavailable",
+            state: .visible(priority: .high),
+            isAvailable: false
+        )
+        let eligible = LiveTestActivity(
+            id: "eligible",
+            state: .visible(priority: .low)
+        )
+        let registry = try ActivityRegistry {
+            activeButHidden
+            unavailable
+            eligible
+        }
+
+        XCTAssertEqual(
+            selectedActivityLivePresentation(from: registry.activities)?.id,
+            eligible.id
+        )
+    }
+
+    func testLiveSelectionUsesHighestPriority() throws {
+        let low = LiveTestActivity(id: "low", state: .visible(priority: .low))
+        let high = LiveTestActivity(id: "high", state: .visible(priority: .high))
+        let normal = LiveTestActivity(id: "normal", state: .visible(priority: .normal))
+        let registry = try ActivityRegistry {
+            low
+            high
+            normal
+        }
+
+        XCTAssertEqual(
+            selectedActivityLivePresentation(from: registry.activities)?.id,
+            high.id
+        )
+    }
+
+    func testEqualLivePrioritiesPreserveRegistrationOrder() throws {
+        let first = LiveTestActivity(id: "first", state: .visible(priority: .normal))
+        let second = LiveTestActivity(id: "second", state: .visible(priority: .normal))
+        let registry = try ActivityRegistry {
+            first
+            second
+        }
+
+        XCTAssertEqual(
+            selectedActivityLivePresentation(from: registry.activities)?.id,
+            first.id
+        )
+    }
+
+    func testLiveStateChangesPropagateThroughErasureWithoutRegistryState() throws {
+        let activity = LiveTestActivity(id: "live", state: .hidden)
+        let registry = try ActivityRegistry { activity }
+        let erased = try XCTUnwrap(registry.activity(for: activity.id))
+        var registryUpdates = 0
+        let observation = registry.objectWillChange.sink { registryUpdates += 1 }
+
+        XCTAssertNil(selectedActivityLivePresentation(from: registry.activities))
+        let _: AnyView = erased.makeLivePresentationView()
+
+        activity.livePresentationState = .visible(priority: .normal)
+
+        XCTAssertEqual(
+            selectedActivityLivePresentation(from: registry.activities)?.id,
+            activity.id
+        )
+        XCTAssertEqual(registryUpdates, 1)
+        withExtendedLifetime(observation) {}
     }
 
     func testDefaultRegistryContainsCalendarMetadataAndConfiguration() throws {
@@ -111,6 +190,37 @@ private final class TestActivity: NotchActivity {
     }
 
     func makeExpandedView() -> some View {
+        Text(metadata.name)
+    }
+}
+
+@MainActor
+private final class LiveTestActivity: NotchActivity {
+    let id: ActivityID
+    let metadata: ActivityMetadata
+
+    @Published var isAvailable: Bool
+    @Published var isActive: Bool
+    @Published var livePresentationState: ActivityLivePresentationState
+
+    init(
+        id: String,
+        state: ActivityLivePresentationState,
+        isAvailable: Bool = true,
+        isActive: Bool = false
+    ) {
+        self.id = ActivityID(id)
+        metadata = ActivityMetadata(name: id, systemImage: "circle")
+        self.isAvailable = isAvailable
+        self.isActive = isActive
+        livePresentationState = state
+    }
+
+    func makeExpandedView() -> some View {
+        Text(metadata.name)
+    }
+
+    func makeLivePresentationView() -> some View {
         Text(metadata.name)
     }
 }
