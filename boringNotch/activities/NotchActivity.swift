@@ -99,6 +99,7 @@ protocol NotchActivity: ObservableObject {
     var isActive: Bool { get }
     var supportsCompactPresentation: Bool { get }
     var livePresentationState: ActivityLivePresentationState { get }
+    var livePresentationSizing: LiveActivityPresentationSizing { get }
     var supportsConfiguration: Bool { get }
 
     @ViewBuilder func makeExpandedView() -> ExpandedContent
@@ -116,6 +117,9 @@ extension NotchActivity {
     var isActive: Bool { false }
     var supportsCompactPresentation: Bool { false }
     var livePresentationState: ActivityLivePresentationState { .hidden }
+    var livePresentationSizing: LiveActivityPresentationSizing {
+        LiveActivityPresentationSizing()
+    }
     var supportsConfiguration: Bool { false }
 
     func activityDidAppear() {}
@@ -157,6 +161,7 @@ final class AnyNotchActivity: @MainActor ObservableObject, Identifiable {
     private let activeState: () -> Bool
     private let compactPresentationSupport: () -> Bool
     private let livePresentation: () -> ActivityLivePresentationState
+    private let presentationSizing: () -> LiveActivityPresentationSizing
     private let configurationSupport: () -> Bool
     private let expandedView: () -> AnyView
     private let compactView: () -> AnyView
@@ -174,6 +179,7 @@ final class AnyNotchActivity: @MainActor ObservableObject, Identifiable {
         activeState = { activity.isActive }
         compactPresentationSupport = { activity.supportsCompactPresentation }
         livePresentation = { activity.livePresentationState }
+        presentationSizing = { activity.livePresentationSizing }
         configurationSupport = { activity.supportsConfiguration }
         expandedView = { AnyView(activity.makeExpandedView()) }
         compactView = { AnyView(activity.makeCompactView()) }
@@ -192,6 +198,7 @@ final class AnyNotchActivity: @MainActor ObservableObject, Identifiable {
     var isActive: Bool { activeState() }
     var supportsCompactPresentation: Bool { compactPresentationSupport() }
     var livePresentationState: ActivityLivePresentationState { livePresentation() }
+    var livePresentationSizing: LiveActivityPresentationSizing { presentationSizing() }
     var supportsConfiguration: Bool { configurationSupport() }
 
     func makeExpandedView() -> AnyView { expandedView() }
@@ -264,7 +271,7 @@ final class AnyLiveActivityPresentationProvider: ObservableObject, Identifiable 
             activity.isAvailable ? activity.livePresentationState : .hidden
         }
         minimalPresentationAccessoryVisibility = { true }
-        presentationSizing = { LiveActivityPresentationSizing() }
+        presentationSizing = { activity.livePresentationSizing }
         accessoryView = {
             AnyView(
                 Image(systemName: activity.metadata.systemImage)
@@ -629,8 +636,15 @@ enum ActivityLivePresentationStack {
         for activity: AnyLiveActivityPresentationProvider,
         accessorySize: CGFloat
     ) -> CGFloat {
-        activity.livePresentationSizing.minimalContentWidth.resolved(accessorySize: accessorySize)
-            + (activity.showsAccessoryInMinimalPresentation ? accessorySize + 6 : 0)
+        let contentWidth = activity.livePresentationSizing.minimalContentWidth.resolved(
+            accessorySize: accessorySize
+        )
+        let accessorySpacing: CGFloat = activity.showsAccessoryInMinimalPresentation && contentWidth > 0
+            ? 6
+            : 0
+
+        return contentWidth
+            + (activity.showsAccessoryInMinimalPresentation ? accessorySize + accessorySpacing : 0)
     }
 }
 

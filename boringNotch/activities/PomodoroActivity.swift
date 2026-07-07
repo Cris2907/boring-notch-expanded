@@ -38,6 +38,9 @@ final class PomodoroActivity: NotchActivity {
             return .hidden
         }
     }
+    let livePresentationSizing = LiveActivityPresentationSizing(
+        minimalContentWidth: .fixed(0)
+    )
     var supportsConfiguration: Bool { true }
 
     func makeExpandedView() -> some View {
@@ -50,6 +53,10 @@ final class PomodoroActivity: NotchActivity {
 
     func makeLivePresentationView() -> some View {
         PomodoroLivePresentationView(manager: manager)
+    }
+
+    func makeMinimalLivePresentationView() -> some View {
+        EmptyView()
     }
 
     func makeConfigurationView() -> some View {

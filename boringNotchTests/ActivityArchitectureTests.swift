@@ -219,6 +219,37 @@ final class ActivityArchitectureTests: XCTestCase {
             splitStack.requiredAdditionalWidth(accessorySize: accessorySize),
             (30 + accessorySize + 6) + accessorySize + 20
         )
+
+        let iconOnlyProvider = LiveTestProvider(
+            id: ActivityID("icon-only"),
+            state: .visible(priority: .normal),
+            livePresentationSizing: LiveActivityPresentationSizing(
+                minimalContentWidth: .fixed(0)
+            )
+        )
+        let contentOnlyProvider = LiveTestProvider(
+            id: ActivityID("content-only"),
+            state: .visible(priority: .normal),
+            showsAccessoryInMinimalPresentation: false,
+            livePresentationSizing: LiveActivityPresentationSizing(
+                minimalContentWidth: .fixed(12)
+            )
+        )
+        let iconOnlyStack = selectedActivityLivePresentationStack(
+            from: [
+                AnyLiveActivityPresentationProvider(iconOnlyProvider),
+                AnyLiveActivityPresentationProvider(contentOnlyProvider)
+            ],
+            snapshot: ActivityLivePresentationSnapshot(startedSequences: [
+                iconOnlyProvider.id: 1,
+                contentOnlyProvider.id: 2
+            ])
+        )
+
+        XCTAssertEqual(
+            iconOnlyStack.requiredAdditionalWidth(accessorySize: accessorySize),
+            accessorySize + 12 + 20
+        )
     }
 
     func testMoreThanTwoLiveActivitiesUseTwoMostRecent() throws {

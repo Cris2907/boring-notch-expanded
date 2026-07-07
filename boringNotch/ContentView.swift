@@ -916,8 +916,9 @@ private struct ClosedActivityMinimalLivePresentationView: View {
         let contentWidth = activity.livePresentationSizing.minimalContentWidth.resolved(
             accessorySize: accessorySize
         )
+        let accessorySpacing: CGFloat = showsAccessory && contentWidth > 0 ? 6 : 0
 
-        HStack(spacing: showsAccessory ? 6 : 0) {
+        HStack(spacing: accessorySpacing) {
             if showsAccessory && iconPlacement == .leading {
                 icon(accessorySize: accessorySize)
             }
@@ -930,7 +931,7 @@ private struct ClosedActivityMinimalLivePresentationView: View {
             }
         }
         .frame(
-            width: contentWidth + (showsAccessory ? accessorySize + 6 : 0),
+            width: contentWidth + (showsAccessory ? accessorySize + accessorySpacing : 0),
             height: vm.effectiveClosedNotchHeight,
             alignment: alignment
         )
