@@ -34,6 +34,7 @@ struct ContentView: View {
     @State private var gestureProgress: CGFloat = .zero
 
     @State private var haptics: Bool = false
+    @State private var lastLoggedClosedActivityLivePresentation = ActivityLivePresentationStack.none.debugSelectionDescription
 
     @Namespace var albumArtNamespace
 
@@ -126,6 +127,45 @@ struct ContentView: View {
         }
     }
 
+    private func closedActivityLivePresentationRenderDescription(
+        for stack: ActivityLivePresentationStack
+    ) -> String {
+        guard vm.notchState == .closed, !vm.hideOnClosed, stack.isVisible else {
+            return ActivityLivePresentationStack.none.debugSelectionDescription
+        }
+
+        let isSystemHUD = coordinator.sneakPeek.show
+            && coordinator.sneakPeek.type != .music
+            && coordinator.sneakPeek.type != .battery
+            && coordinator.sneakPeek.type != .bluetooth
+
+        if coordinator.helloAnimationRunning
+            || (coordinator.expandingView.type == .battery
+                && coordinator.expandingView.show
+                && Defaults[.showPowerStatusNotifications])
+            || shouldShowBluetoothActivity
+            || isSystemHUD
+            || (clockShowInClosedNotch && timeActivityManager.hasSession)
+        {
+            return ActivityLivePresentationStack.none.debugSelectionDescription
+        }
+
+        return stack.debugSelectionDescription
+    }
+
+    private func logClosedActivityLivePresentationIfNeeded(_ description: String) {
+        guard description != lastLoggedClosedActivityLivePresentation else { return }
+
+        #if DEBUG
+        ActivityLivePresentationDebugLogger.logContentViewPresentationChange(
+            from: lastLoggedClosedActivityLivePresentation,
+            to: description
+        )
+        #endif
+
+        lastLoggedClosedActivityLivePresentation = description
+    }
+
     private var shouldShowMediaActivity: Bool {
         (!coordinator.expandingView.show || coordinator.expandingView.type == .music)
             && (musicManager.isPlaying || !musicManager.isPlayerIdle)
@@ -142,6 +182,9 @@ struct ContentView: View {
         let livePresentationStack = selectedActivityLivePresentationStack(
             from: activityRegistry.activities,
             snapshot: activityLivePresentationCoordinator.snapshot
+        )
+        let renderedLivePresentationDescription = closedActivityLivePresentationRenderDescription(
+            for: livePresentationStack
         )
 
         // Calculate scale based on gesture progress only
@@ -244,6 +287,14 @@ struct ContentView: View {
                                 isHovering = false
                             }
                         }
+                    }
+                    .onAppear {
+                        logClosedActivityLivePresentationIfNeeded(
+                            renderedLivePresentationDescription
+                        )
+                    }
+                    .onChange(of: renderedLivePresentationDescription) { _, newValue in
+                        logClosedActivityLivePresentationIfNeeded(newValue)
                     }
                     .onChange(of: activityRegistry.availableActivityIDs) {
                         let destination = resolvedNotchView(

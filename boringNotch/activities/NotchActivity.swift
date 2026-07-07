@@ -204,6 +204,9 @@ final class ActivityLivePresentationCoordinator: ObservableObject {
         reconcile(recordStartsForNewEligibility: false)
 
         registryObservation = registry.objectWillChange.sink { [weak self] _ in
+            #if DEBUG
+            ActivityLivePresentationDebugLogger.logRegistryChangeReceived()
+            #endif
             self?.scheduleReconcile()
         }
     }
@@ -227,6 +230,12 @@ final class ActivityLivePresentationCoordinator: ObservableObject {
     }
 
     private func reconcile(recordStartsForNewEligibility: Bool) {
+        #if DEBUG
+        ActivityLivePresentationDebugLogger.logReconciliationStarted(
+            recordStartsForNewEligibility: recordStartsForNewEligibility
+        )
+        #endif
+
         var nextEligibility: [ActivityID: Bool] = [:]
         var nextStartedSequences = startedSequences
 
@@ -240,10 +249,28 @@ final class ActivityLivePresentationCoordinator: ObservableObject {
                 if recordStartsForNewEligibility {
                     nextSequence += 1
                     nextStartedSequences[activity.id] = nextSequence
+                    #if DEBUG
+                    ActivityLivePresentationDebugLogger.logBecameEligible(
+                        activityID: activity.id,
+                        sequence: nextSequence
+                    )
+                    #endif
                 } else {
                     nextStartedSequences.removeValue(forKey: activity.id)
+                    #if DEBUG
+                    ActivityLivePresentationDebugLogger.logInitiallyEligible(
+                        activityID: activity.id
+                    )
+                    #endif
                 }
             } else if !isEligible {
+                if wasEligible {
+                    #if DEBUG
+                    ActivityLivePresentationDebugLogger.logBecameIneligible(
+                        activityID: activity.id
+                    )
+                    #endif
+                }
                 nextStartedSequences.removeValue(forKey: activity.id)
             }
         }
@@ -251,6 +278,13 @@ final class ActivityLivePresentationCoordinator: ObservableObject {
         knownEligibility = nextEligibility
         startedSequences = nextStartedSequences
         snapshot = ActivityLivePresentationSnapshot(startedSequences: startedSequences)
+
+        #if DEBUG
+        ActivityLivePresentationDebugLogger.logReconciled(
+            activities: registry.activities,
+            snapshot: snapshot
+        )
+        #endif
     }
 }
 
@@ -274,6 +308,17 @@ enum ActivityLivePresentationStack {
             return "split:\(leading.id.rawValue):\(trailing.id.rawValue)"
         }
     }
+
+    var debugSelectionDescription: String {
+        switch self {
+        case .none:
+            return ".none"
+        case .full(let activity):
+            return ".full(\(activity.id.rawValue))"
+        case .split(let leading, let trailing):
+            return ".split(\(leading.id.rawValue), \(trailing.id.rawValue))"
+        }
+    }
 }
 
 @MainActor
@@ -281,7 +326,38 @@ func selectedActivityLivePresentationStack(
     from activities: [AnyNotchActivity],
     snapshot: ActivityLivePresentationSnapshot
 ) -> ActivityLivePresentationStack {
-    let eligibleActivities = activities.enumerated()
+    let eligibleActivities = eligibleLiveActivitiesInSelectionOrder(
+        from: activities,
+        snapshot: snapshot
+    )
+
+    let selection: ActivityLivePresentationStack
+    switch eligibleActivities.count {
+    case 0:
+        selection = .none
+    case 1:
+        selection = .full(eligibleActivities[0])
+    default:
+        selection = .split(leading: eligibleActivities[1], trailing: eligibleActivities[0])
+    }
+
+    #if DEBUG
+    ActivityLivePresentationDebugLogger.logSelectorRun(
+        eligibleActivities: eligibleActivities,
+        snapshot: snapshot,
+        selection: selection
+    )
+    #endif
+
+    return selection
+}
+
+@MainActor
+private func eligibleLiveActivitiesInSelectionOrder(
+    from activities: [AnyNotchActivity],
+    snapshot: ActivityLivePresentationSnapshot
+) -> [AnyNotchActivity] {
+    activities.enumerated()
         .filter { _, activity in
             activity.isAvailable && activity.livePresentationState.priority != nil
         }
@@ -301,16 +377,83 @@ func selectedActivityLivePresentationStack(
             }
         }
         .map(\.element)
+}
 
-    switch eligibleActivities.count {
-    case 0:
-        return .none
-    case 1:
-        return .full(eligibleActivities[0])
-    default:
-        return .split(leading: eligibleActivities[1], trailing: eligibleActivities[0])
+#if DEBUG
+@MainActor
+enum ActivityLivePresentationDebugLogger {
+    private static var lastSelectorSignature: String?
+
+    static func logRegistryChangeReceived() {
+        log("registry/activity change received; scheduling eligibility reconciliation")
+    }
+
+    static func logReconciliationStarted(recordStartsForNewEligibility: Bool) {
+        log("reconciling eligibility recordStarts=\(recordStartsForNewEligibility)")
+    }
+
+    static func logBecameEligible(activityID: ActivityID, sequence: Int) {
+        log("activity became eligible id=\(activityID.rawValue) sequence=\(sequence)")
+    }
+
+    static func logInitiallyEligible(activityID: ActivityID) {
+        log("activity initially eligible id=\(activityID.rawValue) sequence=registry-order")
+    }
+
+    static func logBecameIneligible(activityID: ActivityID) {
+        log("activity became ineligible id=\(activityID.rawValue)")
+    }
+
+    static func logReconciled(
+        activities: [AnyNotchActivity],
+        snapshot: ActivityLivePresentationSnapshot
+    ) {
+        let eligibleActivities = eligibleLiveActivitiesInSelectionOrder(
+            from: activities,
+            snapshot: snapshot
+        )
+        log("eligible snapshot recencyOrder=[\(activityListDescription(activities: eligibleActivities, snapshot: snapshot))]")
+    }
+
+    static func logSelectorRun(
+        eligibleActivities: [AnyNotchActivity],
+        snapshot: ActivityLivePresentationSnapshot,
+        selection: ActivityLivePresentationStack
+    ) {
+        let candidates = activityListDescription(
+            activities: eligibleActivities,
+            snapshot: snapshot
+        )
+        let signature = "candidates=[\(candidates)] result=\(selection.debugSelectionDescription)"
+        guard signature != lastSelectorSignature else { return }
+        lastSelectorSignature = signature
+        log("selector run \(signature)")
+    }
+
+    static func logContentViewPresentationChange(from oldValue: String, to newValue: String) {
+        log("ContentView closed-notch presentation changed \(oldValue) -> \(newValue)")
+    }
+
+    private static func activityListDescription(
+        activities: [AnyNotchActivity],
+        snapshot: ActivityLivePresentationSnapshot
+    ) -> String {
+        activities
+            .map { activity in
+                let sequence = snapshot.startedSequence(for: activity.id)
+                    .map(String.init) ?? "registry-order"
+                let priority = activity.livePresentationState.priority
+                    .map { "\($0.rawValue)" } ?? "hidden"
+                return "\(activity.id.rawValue)#seq=\(sequence)#priority=\(priority)"
+            }
+            .joined(separator: ", ")
+    }
+
+    private static func log(_ message: String) {
+        print("[LiveActivityStack] \(message)")
     }
 }
+#endif
 
 struct ExpandedActivityView: View {
     @ObservedObject var activity: AnyNotchActivity

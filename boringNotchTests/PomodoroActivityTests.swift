@@ -94,6 +94,34 @@ final class PomodoroActivityTests: XCTestCase {
         )
     }
 
+    func testCoordinatorAssignsRecencyWhenPomodoroStarts() async throws {
+        let manager = makeManager()
+        let registry = try ActivityRegistry {
+            PomodoroActivity(manager: manager)
+        }
+        let coordinator = ActivityLivePresentationCoordinator(registry: registry)
+
+        assertStack(
+            selectedActivityLivePresentationStack(
+                from: registry.activities,
+                snapshot: coordinator.snapshot
+            ),
+            contains: []
+        )
+
+        manager.start()
+        await coordinator.waitForPendingReconciliation()
+
+        XCTAssertEqual(coordinator.snapshot.startedSequence(for: .pomodoro), 1)
+        assertStack(
+            selectedActivityLivePresentationStack(
+                from: registry.activities,
+                snapshot: coordinator.snapshot
+            ),
+            contains: [.pomodoro]
+        )
+    }
+
     func testStandardConfigurationDurations() {
         let configuration = PomodoroConfiguration.standard
 
