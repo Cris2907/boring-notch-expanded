@@ -778,6 +778,14 @@ struct MediaLivePresentationAccessoryView: View {
     @ObservedObject var manager: MusicManager
 
     var body: some View {
+        MediaLivePresentationArtworkView(manager: manager)
+    }
+}
+
+private struct MediaLivePresentationArtworkView: View {
+    @ObservedObject var manager: MusicManager
+
+    var body: some View {
         Image(nsImage: manager.albumArt)
             .resizable()
             .scaledToFill()
@@ -814,25 +822,14 @@ struct MediaLivePresentationView: View {
 }
 
 struct MediaMinimalLivePresentationView: View {
+    @EnvironmentObject private var vm: BoringViewModel
     @ObservedObject var manager: MusicManager
 
     var body: some View {
-        Group {
-            if manager.isPlaying {
-                AudioSpectrumView(isPlaying: $manager.isPlaying)
-                    .frame(width: 16, height: 12)
-                    .foregroundStyle(
-                        Defaults[.coloredSpectrogram]
-                            ? Color(nsColor: manager.avgColor)
-                            : .gray
-                    )
-            } else {
-                Image(systemName: "pause.fill")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(.gray)
-            }
-        }
-        .accessibilityLabel(manager.isPlaying ? "Media playing" : "Media paused")
+        let artworkSize = max(0, vm.effectiveClosedNotchHeight - 12)
+
+        MediaLivePresentationArtworkView(manager: manager)
+            .frame(width: artworkSize, height: artworkSize)
     }
 }
 
@@ -935,16 +932,17 @@ private struct ClosedActivityMinimalLivePresentationView: View {
 
     var body: some View {
         let accessorySize = max(0, vm.effectiveClosedNotchHeight - 12)
+        let showsAccessory = activity.showsAccessoryInMinimalPresentation
 
-        HStack(spacing: 6) {
-            if iconPlacement == .leading {
+        HStack(spacing: showsAccessory ? 6 : 0) {
+            if showsAccessory && iconPlacement == .leading {
                 icon(accessorySize: accessorySize)
             }
 
             activity.makeMinimalView()
                 .frame(width: contentWidth, alignment: iconPlacement.contentAlignment)
 
-            if iconPlacement == .trailing {
+            if showsAccessory && iconPlacement == .trailing {
                 icon(accessorySize: accessorySize)
             }
         }

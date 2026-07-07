@@ -186,10 +186,15 @@ protocol LiveActivityPresentationProvider: ObservableObject {
     var id: ActivityID { get }
     var name: String { get }
     var livePresentationState: ActivityLivePresentationState { get }
+    var showsAccessoryInMinimalPresentation: Bool { get }
 
     @ViewBuilder func makeAccessoryView() -> AccessoryContent
     @ViewBuilder func makeFullView() -> FullContent
     @ViewBuilder func makeMinimalView() -> MinimalContent
+}
+
+extension LiveActivityPresentationProvider {
+    var showsAccessoryInMinimalPresentation: Bool { true }
 }
 
 @MainActor
@@ -200,6 +205,7 @@ final class AnyLiveActivityPresentationProvider: ObservableObject, Identifiable 
     let name: String
 
     private let presentationState: () -> ActivityLivePresentationState
+    private let minimalPresentationAccessoryVisibility: () -> Bool
     private let accessoryView: () -> AnyView
     private let fullView: () -> AnyView
     private let minimalView: () -> AnyView
@@ -209,6 +215,7 @@ final class AnyLiveActivityPresentationProvider: ObservableObject, Identifiable 
         id = provider.id
         name = provider.name
         presentationState = { provider.livePresentationState }
+        minimalPresentationAccessoryVisibility = { provider.showsAccessoryInMinimalPresentation }
         accessoryView = { AnyView(provider.makeAccessoryView()) }
         fullView = { AnyView(provider.makeFullView()) }
         minimalView = { AnyView(provider.makeMinimalView()) }
@@ -223,6 +230,7 @@ final class AnyLiveActivityPresentationProvider: ObservableObject, Identifiable 
         presentationState = {
             activity.isAvailable ? activity.livePresentationState : .hidden
         }
+        minimalPresentationAccessoryVisibility = { true }
         accessoryView = {
             AnyView(
                 Image(systemName: activity.metadata.systemImage)
@@ -239,6 +247,7 @@ final class AnyLiveActivityPresentationProvider: ObservableObject, Identifiable 
     }
 
     var livePresentationState: ActivityLivePresentationState { presentationState() }
+    var showsAccessoryInMinimalPresentation: Bool { minimalPresentationAccessoryVisibility() }
 
     func makeAccessoryView() -> AnyView { accessoryView() }
     func makeFullView() -> AnyView { fullView() }
@@ -286,6 +295,7 @@ extension ActivityID {
 final class TimeLiveActivityProvider: LiveActivityPresentationProvider {
     let id = ActivityID.time
     let name = "Timer"
+    let showsAccessoryInMinimalPresentation = false
 
     private let manager: TimeActivityManager
     @Published private var isEnabled: Bool
@@ -347,6 +357,7 @@ final class TimeLiveActivityProvider: LiveActivityPresentationProvider {
 final class MediaLiveActivityProvider: LiveActivityPresentationProvider {
     let id = ActivityID.media
     let name = "Media"
+    let showsAccessoryInMinimalPresentation = false
 
     private let manager: MusicManager
     private let coordinator: BoringViewCoordinator

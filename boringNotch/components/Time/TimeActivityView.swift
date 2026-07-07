@@ -456,24 +456,19 @@ struct TimeMinimalLivePresentationView: View {
     var body: some View {
         TimelineView(.animation(minimumInterval: updateInterval)) { timeline in
             if let snapshot = manager.snapshot, snapshot.phase != .finished {
-                Group {
-                    if snapshot.kind == .timer, snapshot.phase == .running {
-                        TimeProgressRing(snapshot: snapshot, date: timeline.date)
-                    } else {
-                        Text(TimeLivePresentationFormatter.text(for: snapshot, at: timeline.date))
-                            .monospacedDigit()
-                    }
-                }
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .foregroundStyle(.orange)
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
-                .accessibilityLabel(
-                    TimeLivePresentationFormatter.accessibilityLabel(
-                        for: snapshot,
-                        at: timeline.date
+                Text(TimeLivePresentationFormatter.text(for: snapshot, at: timeline.date))
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(.orange)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                    .contentTransition(.numericText())
+                    .accessibilityLabel(
+                        TimeLivePresentationFormatter.accessibilityLabel(
+                            for: snapshot,
+                            at: timeline.date
+                        )
                     )
-                )
             }
         }
     }
