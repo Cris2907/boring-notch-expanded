@@ -336,7 +336,7 @@ final class ActivityArchitectureTests: XCTestCase {
 
         XCTAssertEqual(
             fullStack.requiredAdditionalWidth(accessorySize: accessorySize),
-            accessorySize + 42 + closedActivityFullPresentationContentLeadingPadding + 20
+            ((42 + closedActivityFullPresentationContentLeadingPadding) * 2) + 20
         )
 
         let mediaProvider = LiveTestProvider(
@@ -354,7 +354,7 @@ final class ActivityArchitectureTests: XCTestCase {
 
         XCTAssertEqual(
             mediaStack.requiredAdditionalWidth(accessorySize: accessorySize),
-            (accessorySize * 2) + closedActivityFullPresentationContentLeadingPadding + 20
+            ((accessorySize + closedActivityFullPresentationContentLeadingPadding) * 2) + 20
         )
 
         let leadingProvider = LiveTestProvider(

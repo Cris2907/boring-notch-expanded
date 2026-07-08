@@ -658,12 +658,12 @@ enum ActivityLivePresentationStack {
         case .none:
             return nil
         case .full(let activity):
-            return accessorySize
-                + activity.livePresentationSizing.fullContentWidth.resolved(
+            return closedActivityFullPresentationAdditionalWidth(
+                contentWidth: activity.livePresentationSizing.fullContentWidth.resolved(
                     accessorySize: accessorySize
-                )
-                + closedActivityFullPresentationContentLeadingPadding
-                + 20
+                ),
+                accessorySize: accessorySize
+            )
         case .split(let leading, let trailing):
             return minimalPresentationWidth(
                 for: leading,
