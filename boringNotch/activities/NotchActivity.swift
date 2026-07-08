@@ -21,17 +21,20 @@ struct ActivityMetadata {
     let systemImage: String
     let tint: Color
     let preferredExpandedHeight: CGFloat?
+    let summary: String?
 
     init(
         name: String,
         systemImage: String,
         tint: Color = .accentColor,
-        preferredExpandedHeight: CGFloat? = nil
+        preferredExpandedHeight: CGFloat? = nil,
+        summary: String? = nil
     ) {
         self.name = name
         self.systemImage = systemImage
         self.tint = tint
         self.preferredExpandedHeight = preferredExpandedHeight
+        self.summary = summary
     }
 }
 

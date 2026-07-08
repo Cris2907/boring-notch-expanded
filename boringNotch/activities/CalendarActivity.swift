@@ -12,10 +12,11 @@ final class CalendarActivity: NotchActivity {
 
     let id = activityID
     let metadata = ActivityMetadata(
-        name: "Calendar",
+        name: String(localized: "Calendar"),
         systemImage: "calendar",
         tint: .red,
-        preferredExpandedHeight: calendarOpenNotchHeight
+        preferredExpandedHeight: calendarOpenNotchHeight,
+        summary: String(localized: "View upcoming events and reminders.")
     )
 
     @Published private(set) var isAvailable: Bool

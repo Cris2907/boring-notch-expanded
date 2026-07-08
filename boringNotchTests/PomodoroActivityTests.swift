@@ -34,6 +34,10 @@ final class PomodoroActivityTests: XCTestCase {
         let registered = try XCTUnwrap(registry.activity(for: .pomodoro))
         XCTAssertEqual(registered.metadata.name, "Pomodoro")
         XCTAssertEqual(registered.metadata.systemImage, "timer")
+        XCTAssertEqual(
+            registered.metadata.summary,
+            "Run focused work sessions and timed breaks."
+        )
         XCTAssertTrue(registered.isAvailable)
         XCTAssertTrue(registered.supportsCompactPresentation)
         XCTAssertEqual(registered.livePresentationState, .hidden)

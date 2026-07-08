@@ -36,12 +36,6 @@ struct SettingsView: View {
                 NavigationLink(value: "Media") {
                     Label("Media", systemImage: "play.laptopcomputer")
                 }
-                NavigationLink(value: "Calendar") {
-                    Label("Calendar", systemImage: "calendar")
-                }
-                NavigationLink(value: "Pomodoro") {
-                    Label("Pomodoro", systemImage: "timer")
-                }
                 NavigationLink(value: "Clock") {
                     Label("Clock", systemImage: "clock")
                 }
@@ -83,10 +77,6 @@ struct SettingsView: View {
                     Appearance()
                 case "Media":
                     Media()
-                case "Calendar":
-                    ActivityConfigurationView(activityID: .calendar)
-                case "Pomodoro":
-                    ActivityConfigurationView(activityID: .pomodoro)
                 case "Clock":
                     ClockSettings()
                 case "HUD":
@@ -144,27 +134,30 @@ struct ExtensionsSettings: View {
         Form {
             Section {
                 ForEach(activityRegistry.activities) { activity in
-                    Toggle(
-                        isOn: Binding(
-                            get: { activityRegistry.isActivityEnabled(activity.id) },
-                            set: { activityRegistry.setActivityEnabled($0, for: activity.id) }
-                        )
-                    ) {
-                        HStack(spacing: 10) {
-                            Image(systemName: activity.metadata.systemImage)
-                                .foregroundStyle(activity.metadata.tint)
-                                .frame(width: 18)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(activity.metadata.name)
-                                if !activity.isAvailable {
-                                    Text("Currently unavailable")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
+                    HStack(spacing: 12) {
+                        if activity.supportsConfiguration {
+                            NavigationLink {
+                                ActivityConfigurationView(activityID: activity.id)
+                            } label: {
+                                ExtensionSettingsLabel(activity: activity)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
                             }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        } else {
+                            ExtensionSettingsLabel(activity: activity)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                         }
+
+                        Toggle(
+                            activity.metadata.name,
+                            isOn: Binding(
+                                get: { activityRegistry.isActivityEnabled(activity.id) },
+                                set: { activityRegistry.setActivityEnabled($0, for: activity.id) }
+                            )
+                        )
+                        .labelsHidden()
+                        .tint(.effectiveAccent)
                     }
-                    .tint(.effectiveAccent)
                 }
             } header: {
                 Text("Installed extensions")
@@ -174,6 +167,34 @@ struct ExtensionsSettings: View {
             }
         }
         .navigationTitle("Extensions")
+    }
+}
+
+private struct ExtensionSettingsLabel: View {
+    @ObservedObject var activity: AnyNotchActivity
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: activity.metadata.systemImage)
+                .foregroundStyle(activity.metadata.tint)
+                .frame(width: 18)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(activity.metadata.name)
+
+                if let summary = activity.metadata.summary {
+                    Text(summary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                if !activity.isAvailable {
+                    Text("Currently unavailable")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
     }
 }
 

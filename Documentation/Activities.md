@@ -28,11 +28,14 @@ The open-notch and closed-notch paths share the same registered activity instanc
 Concrete NotchActivity
     -> AnyNotchActivity
         -> ActivityRegistry
-            -> open-notch tabs, pagination, swipe navigation, settings lookup
-        -> AnyLiveActivityPresentationProvider
-            -> LiveActivityPresentationProviderRegistry
-                -> ActivityLivePresentationCoordinator
-                    -> full or split closed-notch chin rendering
+            -> open-notch tabs, pagination, swipe navigation
+            -> Extensions Settings
+                -> ActivityConfigurationView
+                    -> type-erased makeConfigurationView()
+            -> AnyLiveActivityPresentationProvider
+                -> LiveActivityPresentationProviderRegistry
+                    -> ActivityLivePresentationCoordinator
+                        -> full or split closed-notch chin rendering
 ```
 
 `NotchActivity` uses associated view types so concrete activities can return `some View`. `AnyNotchActivity` erases those types only at the heterogeneous registry boundary and forwards the activity's `objectWillChange`. The live-provider adapter then exposes registered activities to the closed-notch stack.
@@ -47,7 +50,7 @@ The important implementation files are:
 | `boringNotch/components/Tabs/TabSelectionView.swift` | Tab models, visible page order, fallback resolution, and pagination dots |
 | `boringNotch/extensions/PanGesture.swift` | Horizontal swipe routing over the same visible page order |
 | `boringNotch/sizing/matters.swift` | Open-notch bounds, preferred-height propagation, and closed-notch measurements |
-| `boringNotch/components/Settings/SettingsView.swift` | Explicit settings navigation and activity configuration hosts |
+| `boringNotch/components/Settings/SettingsView.swift` | Generic registered-extension list, enablement controls, and configuration navigation |
 | `boringNotchTests/ActivityArchitectureTests.swift` | Registry, observation, selection, recency, sizing, provider, and interruption contracts |
 
 Concrete examples are split by responsibility:
@@ -82,13 +85,14 @@ let metadata = ActivityMetadata(
     name: String(localized: "Delivery"),
     systemImage: "shippingbox.fill",
     tint: .blue,
-    preferredExpandedHeight: openNotchSize.height
+    preferredExpandedHeight: openNotchSize.height,
+    summary: String(localized: "Track an active delivery.")
 )
 ```
 
 Use `builtin.<activity>` for app-owned additions and `community.<publisher>.<activity>` for contributed additions. The existing `calendar` ID predates this convention and is the only legacy exception. Never derive an ID from a localized name, reuse `builtin.time` or `builtin.media`, or change a released ID. `ActivityRegistry` rejects duplicate registered-activity IDs, but `LiveActivityPresentationProviderRegistry` does not validate collisions with Timer or Media; a collision corrupts recency and routing because snapshots are keyed by `ActivityID`.
 
-Metadata drives the tab label, tab SF Symbol, selected-tab tint, automatic chin accessory, accessibility fallback name, and optional expanded height. `AnyNotchActivity` captures `id` and `metadata` when it is initialized, so treat both as immutable.
+Metadata drives the tab label, tab SF Symbol, selected-tab tint, automatic chin accessory, accessibility fallback name, optional expanded height, and Extensions Settings presentation. `summary` is optional and supplies the short description below the extension name. Keep the name and summary localized in the concrete activity rather than in the generic Settings UI. `AnyNotchActivity` captures `id` and `metadata` when it is initialized, so treat all metadata as immutable.
 
 `preferredExpandedHeight` is optional. The normal open height is 190 points, Calendar requests 210 points, and `clampedOpenNotchHeight` constrains all preferences to 190...300 points. The window height adds 20 points of shadow space. An activity must adapt within the 640-point open-notch width and this height range rather than resizing the window itself.
 
@@ -101,13 +105,13 @@ Metadata drives the tab label, tab SF Symbol, selected-tab tint, automatic chin 
 | `supportsCompactPresentation` | `false` | Capability metadata only; production UI does not currently mount the compact view |
 | `livePresentationState` | `.hidden` | Closed-notch eligibility and visible/hidden transitions |
 | `livePresentationSizing` | Full 64, minimal 56 | Closed-notch rendering and window width calculation |
-| `supportsConfiguration` | `false` | `ActivityConfigurationView` |
+| `supportsConfiguration` | `false` | Extensions Settings disclosure and `ActivityConfigurationView` |
 
 `isActive` and chin visibility are intentionally independent. Starting work normally sets `isActive == true` and returns a visible `livePresentationState`, but only the latter enters the chin selector. Do not expect `isActive` to show UI automatically.
 
 Any property that changes availability, active state, live state, or rendered data must emit `objectWillChange`. Use `@Published` for state owned by the activity. If a manager owns the state, subscribe to the manager and forward its change notification, as `PomodoroActivity` does. The type-erased activity forwards that notification to the registry, navigation, and live-provider registry.
 
-## Registration creates the dedicated tab
+## Registration creates the dedicated tab and Settings entry
 
 Production activities are registered in `ActivityRegistry.shared`:
 
@@ -126,6 +130,8 @@ No separate edit to `TabSelectionView` is needed. Registration automatically con
 - Pagination dots.
 - Horizontal two-finger navigation.
 - Live-activity hover routing back to the activity's tab.
+
+Registration also contributes an Extensions Settings row without any activity-specific Settings code. Every registered activity remains listed there even when the user disables it or `isAvailable` is false, so the user can restore enablement. The row uses `metadata.name`, `metadata.systemImage`, and optional `metadata.summary`; it shows generic configuration navigation only when `supportsConfiguration` is true.
 
 `BoringHeader` can hide the entire tab strip through the global `alwaysShowTabs` preference, but the activity remains a distinct destination in pagination and swipe navigation. An activity must not add a second, private tab control to work around that global choice.
 
@@ -244,7 +250,9 @@ func makeConfigurationView() -> some View {
 }
 ```
 
-`ActivityConfigurationView(activityID:)` looks up the activity and mounts its configuration only when `supportsConfiguration` is true. Registration does not create a Settings sidebar entry. Add the `NavigationLink` and detail switch case in `SettingsView` explicitly, add persistent keys in `models/Constants.swift`, and localize user-facing strings.
+Registration automatically creates the activity's row in `Settings → Extensions`. When configuration is supported, the row navigates to `ActivityConfigurationView(activityID:)`, which resolves the registered `AnyNotchActivity` and mounts its type-erased `makeConfigurationView()` result. Contributors do not add a sidebar item, `NavigationLink`, or activity-specific switch case to `SettingsView`.
+
+Activities that omit both configuration members retain the default `supportsConfiguration == false` and `EmptyView` implementation. Their Extensions row contains enablement controls without a disclosure indicator. Configuration support is independent of user enablement and runtime availability; a disabled or unavailable registered activity can still be configured.
 
 Configuration changes must define whether they affect the active session or only the next session. Pomodoro, for example, snapshots the current duration and applies duration-setting changes to the next session.
 
@@ -268,7 +276,8 @@ final class DeliveryActivity: NotchActivity {
     let metadata = ActivityMetadata(
         name: String(localized: "Delivery"),
         systemImage: "shippingbox.fill",
-        tint: .blue
+        tint: .blue,
+        summary: String(localized: "Track an active delivery.")
     )
 
     private let manager: DeliveryManager
@@ -323,9 +332,8 @@ After creating the adapter:
 1. Add the model, manager/service, expanded view, full chin view, minimal chin view, and optional settings view.
 2. Add every Swift file to the `boringNotch` app target in `boringNotch.xcodeproj`.
 3. Register exactly one activity instance in `ActivityRegistry.shared`.
-4. Add localized strings and any Defaults keys.
-5. Add an explicit Settings route when configuration is supported.
-6. Add focused architecture, manager, persistence, and navigation tests.
+4. Add localized strings and any Defaults keys. If configuration is supported, implement only `supportsConfiguration` and `makeConfigurationView()`; registration supplies its Settings row and navigation.
+5. Add focused architecture, manager, persistence, and navigation tests.
 
 The app deployment target is macOS 14. Verify every API and SF Symbol against that target even when development uses a newer Xcode or macOS release.
 
@@ -390,7 +398,7 @@ These are acceptance requirements:
 
 At minimum, add tests covering:
 
-- Stable, unique ID and metadata.
+- Stable, unique ID and metadata, including the optional localized summary when supplied.
 - Default registration and registry lookup.
 - Dedicated-tab insertion in `visibleNotchViews` and fallback when unavailable.
 - `objectWillChange` propagation from the manager through `AnyNotchActivity` and `ActivityRegistry`.
@@ -401,7 +409,7 @@ At minimum, add tests covering:
 - Three or more providers promoting the next most recent after one ends.
 - Deterministic full/minimal width calculations, including the real activity's chosen widths.
 - Persistent snapshot validation and timestamp-derived restoration, when state persists.
-- Configuration support and the rule for changes during an active session.
+- Configuration support, generic Extensions navigation, and the rule for changes during an active session.
 
 Run the macOS test target:
 
@@ -419,12 +427,12 @@ Manual review must cover open and closed notch states, one/two/three simultaneou
 An activity is ready only when every applicable item is true:
 
 - It has a permanent namespaced `ActivityID` that does not collide with registered activities, Timer, or Media.
-- It is registered once and automatically receives its own available tab, page dot, and swipe destination.
+- It is registered once and automatically receives its own available tab, page dot, swipe destination, and Extensions Settings row.
 - Its expanded tab is complete and usable without the chin.
 - It explicitly implements both `makeLivePresentationView()` and `makeMinimalLivePresentationView()`.
 - It publishes a deliberate hidden/running/paused/ended `livePresentationState`.
 - Its full and minimal widths are deterministic and tested.
 - All presentations observe one source of truth and recover after interruption or app sleep.
-- Its settings, persistence, permissions, localization, errors, and empty states are defined.
+- Its settings, persistence, permissions, localization, errors, and empty states are defined; configurable activities rely on generic Extensions navigation rather than activity-specific Settings routes.
 - It meets the Apple design and accessibility requirements above.
 - Automated tests pass and the full manual presentation matrix has been reviewed.

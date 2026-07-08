@@ -17,7 +17,11 @@ final class ActivityArchitectureTests: XCTestCase {
 
     func testRegistryPreservesRegistrationOrderAndMetadata() throws {
         let first = TestActivity(id: "first", name: "First")
-        let second = TestActivity(id: "second", name: "Second")
+        let second = TestActivity(
+            id: "second",
+            name: "Second",
+            summary: "Second activity summary"
+        )
         let registry = try ActivityRegistry {
             first
             second
@@ -25,6 +29,11 @@ final class ActivityArchitectureTests: XCTestCase {
 
         XCTAssertEqual(registry.activities.map(\.id), [first.id, second.id])
         XCTAssertEqual(registry.activity(for: second.id)?.metadata.name, "Second")
+        XCTAssertNil(registry.activity(for: first.id)?.metadata.summary)
+        XCTAssertEqual(
+            registry.activity(for: second.id)?.metadata.summary,
+            "Second activity summary"
+        )
         XCTAssertNil(registry.activity(for: ActivityID("missing")))
     }
 
@@ -87,6 +96,21 @@ final class ActivityArchitectureTests: XCTestCase {
             ),
             .home
         )
+    }
+
+    func testDisabledConfigurableActivityRemainsRegisteredAndConfigurable() throws {
+        let activity = ConfigurableTestActivity(id: "configurable")
+        let registry = try ActivityRegistry(enablementStore: ActivityEnablementStore()) {
+            activity
+        }
+
+        registry.setActivityEnabled(false, for: activity.id)
+
+        let registered = try XCTUnwrap(registry.activity(for: activity.id))
+        XCTAssertEqual(registry.activities.map(\.id), [activity.id])
+        XCTAssertFalse(registry.isActivityEnabled(activity.id))
+        XCTAssertTrue(registered.supportsConfiguration)
+        let _: AnyView = registered.makeConfigurationView()
     }
 
     func testEnablementStorePersistsDisabledActivityIDs() {
@@ -545,6 +569,7 @@ final class ActivityArchitectureTests: XCTestCase {
 
         XCTAssertEqual(calendar.metadata.name, "Calendar")
         XCTAssertEqual(calendar.metadata.systemImage, "calendar")
+        XCTAssertEqual(calendar.metadata.summary, "View upcoming events and reminders.")
         XCTAssertEqual(calendar.metadata.preferredExpandedHeight, calendarOpenNotchHeight)
         XCTAssertTrue(calendar.supportsConfiguration)
         XCTAssertFalse(calendar.supportsCompactPresentation)
@@ -823,9 +848,9 @@ private final class TestActivity: NotchActivity {
     @Published var isAvailable = true
     @Published var isActive = false
 
-    init(id: String, name: String) {
+    init(id: String, name: String, summary: String? = nil) {
         self.id = ActivityID(id)
-        metadata = ActivityMetadata(name: name, systemImage: "circle")
+        metadata = ActivityMetadata(name: name, systemImage: "circle", summary: summary)
     }
 
     func makeExpandedView() -> some View {
@@ -861,6 +886,27 @@ private final class LiveTestActivity: NotchActivity {
 
     func makeLivePresentationView() -> some View {
         Text(metadata.name)
+    }
+}
+
+@MainActor
+private final class ConfigurableTestActivity: NotchActivity {
+    let id: ActivityID
+    let metadata: ActivityMetadata
+
+    init(id: String) {
+        self.id = ActivityID(id)
+        metadata = ActivityMetadata(name: id, systemImage: "slider.horizontal.3")
+    }
+
+    var supportsConfiguration: Bool { true }
+
+    func makeExpandedView() -> some View {
+        Text(metadata.name)
+    }
+
+    func makeConfigurationView() -> some View {
+        Text("Configuration")
     }
 }
 

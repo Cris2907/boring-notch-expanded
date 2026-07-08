@@ -13,7 +13,8 @@ final class PomodoroActivity: NotchActivity {
     let metadata = ActivityMetadata(
         name: String(localized: "Pomodoro"),
         systemImage: "timer",
-        tint: .red
+        tint: .red,
+        summary: String(localized: "Run focused work sessions and timed breaks.")
     )
 
     private let manager: PomodoroManager
