@@ -30,6 +30,7 @@ class BoringViewModel: NSObject, ObservableObject {
 
     @Published var edgeAutoOpenActive: Bool = false
     @Published var isBatteryPopoverActive: Bool = false
+    @Published private(set) var isKeyboardInteractionActive: Bool = false
 
     @Published var screenUUID: String?
 
@@ -194,6 +195,11 @@ class BoringViewModel: NSObject, ObservableObject {
         
         // Force music information update when notch is opened
         MusicManager.shared.forceUpdate()
+    }
+
+    func setKeyboardInteractionActive(_ isActive: Bool) {
+        guard isKeyboardInteractionActive != isActive else { return }
+        isKeyboardInteractionActive = isActive
     }
 
     func updateOpenNotchHeight(_ height: CGFloat) {

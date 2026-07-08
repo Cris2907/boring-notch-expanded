@@ -237,6 +237,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let styleMask: NSWindow.StyleMask = [.borderless, .nonactivatingPanel, .utilityWindow, .hudWindow]
         
         let window = BoringNotchSkyLightWindow(contentRect: rect, styleMask: styleMask, backing: .buffered, defer: false)
+        window.bindKeyboardFocus(to: viewModel)
         
         // Enable SkyLight only when screen is locked
         if isScreenLocked {
@@ -399,6 +400,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                         do {
                             try await Task.sleep(for: .seconds(3))
                             await MainActor.run {
+                                guard viewModel?.isKeyboardInteractionActive == false else { return }
                                 viewModel?.close()
                             }
                         } catch { }

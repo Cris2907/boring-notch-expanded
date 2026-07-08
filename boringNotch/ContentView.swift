@@ -282,13 +282,20 @@ struct ContentView: View {
                         handleHorizontalSwipe(direction)
                     }
                     .onReceive(NotificationCenter.default.publisher(for: .sharingDidFinish)) { _ in
-                        if vm.notchState == .open && !isHovering && !vm.isBatteryPopoverActive {
+                        if vm.notchState == .open && !isHovering
+                            && !vm.isBatteryPopoverActive
+                            && !vm.isKeyboardInteractionActive
+                        {
                             hoverTask?.cancel()
                             hoverTask = Task {
                                 try? await Task.sleep(for: .milliseconds(100))
                                 guard !Task.isCancelled else { return }
                                 await MainActor.run {
-                                    if self.vm.notchState == .open && !self.isHovering && !self.vm.isBatteryPopoverActive && !SharingStateManager.shared.preventNotchClose {
+                                    if self.vm.notchState == .open && !self.isHovering
+                                        && !self.vm.isBatteryPopoverActive
+                                        && !self.vm.isKeyboardInteractionActive
+                                        && !SharingStateManager.shared.preventNotchClose
+                                    {
                                         self.vm.close()
                                     }
                                 }
@@ -328,16 +335,45 @@ struct ContentView: View {
                         }
                     }
                     .onChange(of: vm.isBatteryPopoverActive) {
-                        if !vm.isBatteryPopoverActive && !isHovering && vm.notchState == .open && !SharingStateManager.shared.preventNotchClose {
+                        if !vm.isBatteryPopoverActive && !isHovering
+                            && !vm.isKeyboardInteractionActive
+                            && vm.notchState == .open
+                            && !SharingStateManager.shared.preventNotchClose
+                        {
                             hoverTask?.cancel()
                             hoverTask = Task {
                                 try? await Task.sleep(for: .milliseconds(100))
                                 guard !Task.isCancelled else { return }
                                 await MainActor.run {
-                                    if !self.vm.isBatteryPopoverActive && !self.isHovering && self.vm.notchState == .open && !SharingStateManager.shared.preventNotchClose {
+                                    if !self.vm.isBatteryPopoverActive && !self.isHovering
+                                        && !self.vm.isKeyboardInteractionActive
+                                        && self.vm.notchState == .open
+                                        && !SharingStateManager.shared.preventNotchClose
+                                    {
                                         self.vm.close()
                                     }
                                 }
+                            }
+                        }
+                    }
+                    .onChange(of: vm.isKeyboardInteractionActive) { _, isActive in
+                        guard !isActive, !isHovering, !vm.isBatteryPopoverActive,
+                              vm.notchState == .open,
+                              !SharingStateManager.shared.preventNotchClose
+                        else { return }
+
+                        hoverTask?.cancel()
+                        hoverTask = Task {
+                            try? await Task.sleep(for: .milliseconds(100))
+                            guard !Task.isCancelled else { return }
+                            await MainActor.run {
+                                guard !self.vm.isKeyboardInteractionActive,
+                                      !self.isHovering,
+                                      !self.vm.isBatteryPopoverActive,
+                                      self.vm.notchState == .open,
+                                      !SharingStateManager.shared.preventNotchClose
+                                else { return }
+                                self.vm.close()
                             }
                         }
                     }
@@ -399,7 +435,9 @@ struct ContentView: View {
                 }
 
                 vm.dropEvent = false
-                if !SharingStateManager.shared.preventNotchClose {
+                if !vm.isKeyboardInteractionActive
+                    && !SharingStateManager.shared.preventNotchClose
+                {
                     vm.close()
                 }
             }
@@ -693,7 +731,11 @@ struct ContentView: View {
                         self.isHovering = false
                     }
                     
-                    if self.vm.notchState == .open && !self.vm.isBatteryPopoverActive && !SharingStateManager.shared.preventNotchClose {
+                    if self.vm.notchState == .open
+                        && !self.vm.isBatteryPopoverActive
+                        && !self.vm.isKeyboardInteractionActive
+                        && !SharingStateManager.shared.preventNotchClose
+                    {
                         self.vm.close()
                     }
                 }
@@ -925,7 +967,11 @@ private struct ClosedActivityFullLivePresentationView: View {
                 }
 
             activity.makeFullView()
-                .frame(width: contentWidth, alignment: .leading)
+                .padding(.leading, closedActivityFullPresentationContentLeadingPadding)
+                .frame(
+                    width: contentWidth + closedActivityFullPresentationContentLeadingPadding,
+                    alignment: .leading
+                )
                 .contentShape(Rectangle())
                 .onHover { hovering in
                     guard hovering else { return }

@@ -90,12 +90,74 @@ final class ActivityEnablementStore: ObservableObject {
 }
 
 @MainActor
+final class ActivityChinVisibilityStore: ObservableObject {
+    static let shared: ActivityChinVisibilityStore = {
+        var hiddenActivityIDs = Set(Defaults[.activityIDsHiddenFromChin].map { ActivityID($0) })
+        hiddenActivityIDs.insert(.quickNotes)
+
+        let persistedHiddenActivityIDs = hiddenActivityIDs.map(\.rawValue).sorted()
+        if Defaults[.activityIDsHiddenFromChin] != persistedHiddenActivityIDs {
+            Defaults[.activityIDsHiddenFromChin] = persistedHiddenActivityIDs
+        }
+
+        let store = ActivityChinVisibilityStore(
+            hiddenActivityIDs: hiddenActivityIDs,
+            persist: { hiddenActivityIDs in
+                Defaults[.activityIDsHiddenFromChin] = hiddenActivityIDs
+            }
+        )
+
+        store.defaultsObservation = Defaults.publisher(.activityIDsHiddenFromChin)
+            .map { Set($0.newValue.map { ActivityID($0) }) }
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak store] hiddenActivityIDs in
+                guard store?.hiddenActivityIDs != hiddenActivityIDs else { return }
+                store?.hiddenActivityIDs = hiddenActivityIDs
+            }
+
+        return store
+    }()
+
+    @Published private(set) var hiddenActivityIDs: Set<ActivityID>
+
+    private let persist: (([String]) -> Void)?
+    private var defaultsObservation: AnyCancellable?
+
+    init(
+        hiddenActivityIDs: Set<ActivityID> = [],
+        persist: (([String]) -> Void)? = nil
+    ) {
+        self.hiddenActivityIDs = hiddenActivityIDs
+        self.persist = persist
+    }
+
+    func isShown(_ activityID: ActivityID) -> Bool {
+        !hiddenActivityIDs.contains(activityID)
+    }
+
+    func setShown(_ isShown: Bool, for activityID: ActivityID) {
+        var nextHiddenActivityIDs = hiddenActivityIDs
+        if isShown {
+            nextHiddenActivityIDs.remove(activityID)
+        } else {
+            nextHiddenActivityIDs.insert(activityID)
+        }
+
+        guard nextHiddenActivityIDs != hiddenActivityIDs else { return }
+        hiddenActivityIDs = nextHiddenActivityIDs
+        persist?(nextHiddenActivityIDs.map(\.rawValue).sorted())
+    }
+}
+
+@MainActor
 final class ActivityRegistry: ObservableObject {
     static let shared: ActivityRegistry = {
         do {
-            return try ActivityRegistry(enablementStore: .shared) {
+            return try ActivityRegistry(enablementStore: .shared, chinVisibilityStore: .shared) {
                 CalendarActivity()
                 PomodoroActivity()
+                QuickNotesActivity()
             }
         } catch {
             preconditionFailure("Invalid default activity registry: \(error)")
@@ -106,15 +168,19 @@ final class ActivityRegistry: ObservableObject {
 
     private let activitiesByID: [ActivityID: AnyNotchActivity]
     private let enablementStore: ActivityEnablementStore
+    private let chinVisibilityStore: ActivityChinVisibilityStore
     private var activityObservations: Set<AnyCancellable> = []
     private var enablementObservation: AnyCancellable?
+    private var chinVisibilityObservation: AnyCancellable?
 
     init(
         enablementStore: ActivityEnablementStore? = nil,
+        chinVisibilityStore: ActivityChinVisibilityStore? = nil,
         @ActivityRegistryBuilder activities: () -> [AnyNotchActivity]
     ) throws {
         let registeredActivities = activities()
         let resolvedEnablementStore = enablementStore ?? ActivityEnablementStore()
+        let resolvedChinVisibilityStore = chinVisibilityStore ?? ActivityChinVisibilityStore()
         var indexedActivities: [ActivityID: AnyNotchActivity] = [:]
 
         for activity in registeredActivities {
@@ -126,6 +192,7 @@ final class ActivityRegistry: ObservableObject {
 
         self.activities = registeredActivities
         self.enablementStore = resolvedEnablementStore
+        self.chinVisibilityStore = resolvedChinVisibilityStore
         activitiesByID = indexedActivities
 
         for activity in registeredActivities {
@@ -137,6 +204,11 @@ final class ActivityRegistry: ObservableObject {
         }
 
         enablementObservation = resolvedEnablementStore.objectWillChange
+            .sink { [weak self] in
+                self?.objectWillChange.send()
+            }
+
+        chinVisibilityObservation = resolvedChinVisibilityStore.objectWillChange
             .sink { [weak self] in
                 self?.objectWillChange.send()
             }
@@ -171,8 +243,17 @@ final class ActivityRegistry: ObservableObject {
         return activity.isAvailable
     }
 
+    func isActivityShownOnChin(_ id: ActivityID) -> Bool {
+        activitiesByID[id] != nil && chinVisibilityStore.isShown(id)
+    }
+
     func setActivityEnabled(_ isEnabled: Bool, for id: ActivityID) {
         guard activitiesByID[id] != nil else { return }
         enablementStore.setEnabled(isEnabled, for: id)
+    }
+
+    func setActivityShownOnChin(_ isShown: Bool, for id: ActivityID) {
+        guard activitiesByID[id] != nil else { return }
+        chinVisibilityStore.setShown(isShown, for: id)
     }
 }

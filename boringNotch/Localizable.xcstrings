@@ -911,6 +911,16 @@
     "%lld min" : {
 
     },
+    "%lld/%lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld/%2$lld"
+          }
+        }
+      }
+    },
     "%lld%%" : {
       "localizations" : {
         "ar" : {
@@ -4734,6 +4744,9 @@
         }
       }
     },
+    "Chin" : {
+
+    },
     "Choose a Music Source" : {
       "localizations" : {
         "ar" : {
@@ -5233,6 +5246,9 @@
           }
         }
       }
+    },
+    "Clear note" : {
+
     },
     "Clear slot" : {
       "localizations" : {
@@ -7461,7 +7477,7 @@
         }
       }
     },
-    "Disabled extensions are hidden from the open notch and cannot appear as live activities." : {
+    "Disabled extensions are hidden from the open notch. Extensions with a chin toggle can stay available without showing in the closed notch." : {
 
     },
     "Dismiss" : {
@@ -8980,6 +8996,9 @@
           }
         }
       }
+    },
+    "Enabled" : {
+
     },
     "Enhance your experience with HUDs" : {
       "localizations" : {
@@ -12009,6 +12028,9 @@
       "extractionState" : "manual"
     },
     "Invert timer swipe direction" : {
+
+    },
+    "Keep a short note close at hand." : {
 
     },
     "Layout Preview" : {
@@ -15633,6 +15655,9 @@
         }
       }
     },
+    "Note saved" : {
+
+    },
     "Open Calendar Settings" : {
       "localizations" : {
         "ar" : {
@@ -16653,6 +16678,21 @@
           }
         }
       }
+    },
+    "Quick note" : {
+
+    },
+    "Quick Note saved" : {
+
+    },
+    "Quick Note saved; content hidden" : {
+
+    },
+    "Quick Note: %@" : {
+
+    },
+    "Quick Notes" : {
+
     },
     "Quick Share" : {
       "localizations" : {
@@ -18276,6 +18316,9 @@
           }
         }
       }
+    },
+    "Saved" : {
+
     },
     "Seconds" : {
       "extractionState" : "manual"
@@ -19901,6 +19944,9 @@
           }
         }
       }
+    },
+    "Show on chin" : {
+
     },
     "Show percentage" : {
       "localizations" : {
@@ -22972,9 +23018,6 @@
         }
       }
     },
-    "View upcoming events and reminders." : {
-
-    },
     "View on GitHub: pear-devs/pear-desktop" : {
       "localizations" : {
         "ar" : {
@@ -23074,6 +23117,9 @@
           }
         }
       }
+    },
+    "View upcoming events and reminders." : {
+
     },
     "Welcome" : {
       "localizations" : {
@@ -23474,6 +23520,9 @@
           }
         }
       }
+    },
+    "Write a quick note…" : {
+
     },
     "You can now enjoy the app. If you want to tweak things further, you can always visit the settings." : {
       "localizations" : {

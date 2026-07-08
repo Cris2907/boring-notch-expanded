@@ -128,6 +128,21 @@ final class ActivityArchitectureTests: XCTestCase {
         XCTAssertTrue(store.isEnabled(second))
     }
 
+    func testChinVisibilityStorePersistsHiddenActivityIDs() {
+        let first = ActivityID("first")
+        let second = ActivityID("second")
+        var persistedValues: [[String]] = []
+        let store = ActivityChinVisibilityStore { persistedValues.append($0) }
+
+        store.setShown(false, for: second)
+        store.setShown(false, for: first)
+        store.setShown(true, for: second)
+
+        XCTAssertEqual(persistedValues, [["second"], ["first", "second"], ["first"]])
+        XCTAssertFalse(store.isShown(first))
+        XCTAssertTrue(store.isShown(second))
+    }
+
     func testStateChangesPropagateThroughTypeErasureAndRegistry() throws {
         let activity = TestActivity(id: "observable", name: "Observable")
         let registry = try ActivityRegistry { activity }
@@ -215,6 +230,43 @@ final class ActivityArchitectureTests: XCTestCase {
         XCTAssertNotNil(coordinator.snapshot.startedSequence(for: activity.id))
     }
 
+    func testHidingRegisteredActivityFromChinKeepsItAvailableButRemovesLiveEligibility() async throws {
+        let activity = LiveTestActivity(
+            id: "toggle-chin",
+            state: .visible(priority: .normal)
+        )
+        let activityRegistry = try ActivityRegistry(
+            enablementStore: ActivityEnablementStore(),
+            chinVisibilityStore: ActivityChinVisibilityStore()
+        ) {
+            activity
+        }
+        let liveRegistry = LiveActivityPresentationProviderRegistry(
+            activityRegistry: activityRegistry
+        )
+        let coordinator = ActivityLivePresentationCoordinator(registry: liveRegistry)
+
+        XCTAssertEqual(activityRegistry.availableActivityIDs, [activity.id])
+        assertStack(selectedStack(from: liveRegistry, coordinator: coordinator), contains: [activity.id])
+
+        activityRegistry.setActivityShownOnChin(false, for: activity.id)
+        await coordinator.waitForPendingReconciliation()
+
+        XCTAssertTrue(activityRegistry.isActivityEnabled(activity.id))
+        XCTAssertEqual(activityRegistry.availableActivityIDs, [activity.id])
+        XCTAssertFalse(activityRegistry.isActivityShownOnChin(activity.id))
+        XCTAssertTrue(liveRegistry.providers.isEmpty)
+        assertStack(selectedStack(from: liveRegistry, coordinator: coordinator), contains: [])
+        XCTAssertNil(coordinator.snapshot.startedSequence(for: activity.id))
+
+        activityRegistry.setActivityShownOnChin(true, for: activity.id)
+        await coordinator.waitForPendingReconciliation()
+
+        XCTAssertEqual(liveRegistry.providers.map(\.id), [activity.id])
+        assertStack(selectedStack(from: liveRegistry, coordinator: coordinator), contains: [activity.id])
+        XCTAssertNotNil(coordinator.snapshot.startedSequence(for: activity.id))
+    }
+
     func testSingleEligibleLiveSelectionUsesFullPresentation() throws {
         let activity = LiveTestActivity(id: "single", state: .visible(priority: .normal))
         let registry = try ActivityRegistry { activity }
@@ -284,7 +336,7 @@ final class ActivityArchitectureTests: XCTestCase {
 
         XCTAssertEqual(
             fullStack.requiredAdditionalWidth(accessorySize: accessorySize),
-            accessorySize + 42 + 20
+            accessorySize + 42 + closedActivityFullPresentationContentLeadingPadding + 20
         )
 
         let mediaProvider = LiveTestProvider(
@@ -302,7 +354,7 @@ final class ActivityArchitectureTests: XCTestCase {
 
         XCTAssertEqual(
             mediaStack.requiredAdditionalWidth(accessorySize: accessorySize),
-            (accessorySize * 2) + 20
+            (accessorySize * 2) + closedActivityFullPresentationContentLeadingPadding + 20
         )
 
         let leadingProvider = LiveTestProvider(

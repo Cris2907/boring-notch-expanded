@@ -33,6 +33,7 @@ extension SkyLightOperator {
 
 class BoringNotchSkyLightWindow: NSPanel {
     private var isSkyLightEnabled: Bool = false
+    private var keyboardFocusBinding: NotchWindowKeyboardFocusBinding?
     
     override init(
         contentRect: NSRect,
@@ -58,6 +59,7 @@ class BoringNotchSkyLightWindow: NSPanel {
         titlebarAppearsTransparent = true
         backgroundColor = .clear
         isMovable = false
+        becomesKeyOnlyIfNeeded = true
         level = .mainMenu + 3
         hasShadow = false
         isReleasedWhenClosed = false
@@ -108,7 +110,32 @@ class BoringNotchSkyLightWindow: NSPanel {
     }
     
     private var observers: Set<AnyCancellable> = []
-    
-    override var canBecomeKey: Bool { false }
+
+    func bindKeyboardFocus(to viewModel: BoringViewModel) {
+        keyboardFocusBinding = NotchWindowKeyboardFocusBinding(
+            window: self,
+            viewModel: viewModel
+        )
+    }
+
+    override func makeFirstResponder(_ responder: NSResponder?) -> Bool {
+        let accepted = super.makeFirstResponder(responder)
+        if accepted {
+            keyboardFocusBinding?.firstResponderDidChange()
+        }
+        return accepted
+    }
+
+    override func becomeKey() {
+        super.becomeKey()
+        keyboardFocusBinding?.windowDidBecomeKey()
+    }
+
+    override func resignKey() {
+        super.resignKey()
+        keyboardFocusBinding?.windowDidResignKey()
+    }
+
+    override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
 }

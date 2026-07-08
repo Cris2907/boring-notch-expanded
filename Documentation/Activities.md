@@ -154,6 +154,8 @@ Registration is source-defined and fixed for the process lifetime. Changing `isA
 
 The expanded view must be the complete activity experience. Put controls, detailed status, errors, empty states, and permission recovery here. Do not require the chin to operate the feature.
 
+The notch host remains a nonactivating panel, but it can become key only when an AppKit control reports that it needs keyboard input. Native SwiftUI text fields and editors receive this behavior automatically; activities must not access or manipulate `NSWindow`. Ordinary buttons and non-text activities do not make the panel key. Closing the notch clears its first responder, and automatic hover closing waits while a control genuinely requires keyboard interaction.
+
 Activity instances are shared singletons through `ActivityRegistry.shared`, while the app can create one notch window per display. Appearance callbacks can therefore run once per visible window and may overlap. Make them idempotent or reference-counted. Prefer a view's own `onAppear` and `onDisappear` for view-local work; use activity callbacks only when the activity object itself owns visibility-scoped work.
 
 ## Complete and one-side chin presentations
@@ -342,6 +344,7 @@ The app deployment target is macOS 14. Verify every API and SF Symbol against th
 | Feature | Dedicated tab | Complete chin | One-side chin | Notes |
 | --- | --- | --- | --- | --- |
 | Pomodoro | Yes, `.activity(.pomodoro)` | Remaining time and paused state | Automatic red Timer accessory; custom minimal content is currently empty | Meets the three code paths, but showing a short dynamic value in the minimal view would align more closely with Apple's minimal-presentation guidance |
+| Quick Notes | Yes, `.activity(.quickNotes)` | Single-line note preview or private saved status | Narrow saved status | Production registered; note content is locally persisted and live-eligible only while meaningful content exists |
 | Calendar | Yes when `showCalendar` is enabled | No | No | Registered and configurable, but expanded-only; it does not meet the required three-presentation contract yet |
 | Example | Only if temporarily registered | No | No | Demonstrates basic type conformance and compact capability; not production registered and not a complete template for a new activity |
 | Timer/Stopwatch | Shared legacy `.activities` page, not a registered activity | Yes through `TimeLiveActivityProvider` | Accessory only | Additional provider, ID `builtin.time`; visibility also depends on `clockShowInClosedNotch` |
