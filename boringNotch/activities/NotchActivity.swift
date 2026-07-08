@@ -662,6 +662,7 @@ enum ActivityLivePresentationStack {
                 + activity.livePresentationSizing.fullContentWidth.resolved(
                     accessorySize: accessorySize
                 )
+                + closedActivityFullPresentationContentLeadingPadding
                 + 20
         case .split(let leading, let trailing):
             return minimalPresentationWidth(

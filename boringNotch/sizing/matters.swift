@@ -13,6 +13,7 @@ let downloadSneakSize: CGSize = .init(width: 65, height: 1)
 let batterySneakSize: CGSize = .init(width: 160, height: 1)
 let bluetoothSneakSize: CGSize = .init(width: 292, height: 1)
 let closedTimeActivityMinimumTextWidth: CGFloat = 56
+let closedActivityFullPresentationContentLeadingPadding: CGFloat = 8
 
 func closedActivityNotchEdgeSpacing(accessorySize: CGFloat) -> CGFloat {
     min(4, max(0, accessorySize / 5))

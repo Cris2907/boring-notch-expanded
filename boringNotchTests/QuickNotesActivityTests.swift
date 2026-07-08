@@ -108,6 +108,24 @@ final class QuickNotesActivityTests: XCTestCase {
         )
     }
 
+    func testContentIsLimitedToMaximumLineCountWhenUpdatedAndRestored() {
+        let manager = makeManager()
+        let oversizedNote = (1...(QuickNotesManager.maximumLineCount + 4))
+            .map { "Line \($0)" }
+            .joined(separator: "\n")
+
+        manager.updateNote(oversizedNote)
+
+        XCTAssertEqual(manager.note.components(separatedBy: "\n").count, QuickNotesManager.maximumLineCount)
+        XCTAssertEqual(manager.note.components(separatedBy: "\n").last, "Line 10")
+
+        defaults.set(oversizedNote, forKey: "quickNotes.note")
+
+        let restoredManager = makeManager()
+        XCTAssertEqual(restoredManager.note.components(separatedBy: "\n").count, QuickNotesManager.maximumLineCount)
+        XCTAssertEqual(defaults.string(forKey: "quickNotes.note"), restoredManager.note)
+    }
+
     func testWhitespaceIsPersistedButNotLiveEligible() throws {
         let manager = makeManager()
         let registry = try ActivityRegistry {
@@ -201,7 +219,7 @@ final class QuickNotesActivityTests: XCTestCase {
         switch fullStack {
         case .full(let activity):
             XCTAssertEqual(activity.id, .quickNotes)
-            XCTAssertEqual(fullStack.requiredAdditionalWidth(accessorySize: 20), 180)
+            XCTAssertEqual(fullStack.requiredAdditionalWidth(accessorySize: 20), 188)
         default:
             XCTFail("Expected Quick Notes to use its full presentation")
         }

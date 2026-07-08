@@ -967,7 +967,11 @@ private struct ClosedActivityFullLivePresentationView: View {
                 }
 
             activity.makeFullView()
-                .frame(width: contentWidth, alignment: .leading)
+                .padding(.leading, closedActivityFullPresentationContentLeadingPadding)
+                .frame(
+                    width: contentWidth + closedActivityFullPresentationContentLeadingPadding,
+                    alignment: .leading
+                )
                 .contentShape(Rectangle())
                 .onHover { hovering in
                     guard hovering else { return }

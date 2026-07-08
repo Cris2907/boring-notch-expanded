@@ -4,6 +4,7 @@ import Foundation
 final class QuickNotesManager: ObservableObject {
     static let shared = QuickNotesManager()
     static let maximumCharacterCount = 262
+    static let maximumLineCount = 10
 
     @Published private(set) var note: String
 
@@ -55,7 +56,12 @@ final class QuickNotesManager: ObservableObject {
         return String(normalized.prefix(characterLimit - 1)) + "…"
     }
 
-    private static func limitedNote(_ note: String) -> String {
-        String(note.prefix(maximumCharacterCount))
+    static func limitedNote(_ note: String) -> String {
+        let limitedLines = note
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .prefix(maximumLineCount)
+            .joined(separator: "\n")
+
+        return String(limitedLines.prefix(maximumCharacterCount))
     }
 }
