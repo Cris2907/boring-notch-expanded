@@ -46,32 +46,73 @@ struct TabSelectionView: View {
     @ObservedObject private var activityRegistry = ActivityRegistry.shared
     @Default(.boringShelf) private var boringShelf
     @Default(.tintedTabIcons) private var tintedTabIcons
+    @State private var contentWidth: CGFloat = 0
+    @State private var viewportWidth: CGFloat = 0
     @Namespace var animation
+
     var body: some View {
-        HStack(spacing: 0) {
-            ForEach(visibleTabs) { tab in
-                    TabButton(label: tab.label, icon: tab.icon, selected: coordinator.currentView == tab.view) {
-                        withAnimation(.smooth) {
-                            coordinator.currentView = tab.view
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 0) {
+                    ForEach(visibleTabs) { tab in
+                        TabButton(label: tab.label, icon: tab.icon, selected: coordinator.currentView == tab.view) {
+                            withAnimation(.smooth) {
+                                coordinator.currentView = tab.view
+                            }
                         }
-                    }
-                    .frame(height: 26)
-                    .foregroundStyle(iconColor(for: tab.view))
-                    .background {
-                        if tab.view == coordinator.currentView {
-                            Capsule()
-                                .fill(coordinator.currentView == tab.view ? Color(nsColor: .secondarySystemFill) : Color.clear)
-                                .matchedGeometryEffect(id: "capsule", in: animation)
-                        } else {
-                            Capsule()
-                                .fill(coordinator.currentView == tab.view ? Color(nsColor: .secondarySystemFill) : Color.clear)
-                                .matchedGeometryEffect(id: "capsule", in: animation)
-                                .hidden()
+                        .frame(height: 26)
+                        .foregroundStyle(iconColor(for: tab.view))
+                        .background {
+                            if tab.view == coordinator.currentView {
+                                Capsule()
+                                    .fill(coordinator.currentView == tab.view ? Color(nsColor: .secondarySystemFill) : Color.clear)
+                                    .matchedGeometryEffect(id: "capsule", in: animation)
+                            } else {
+                                Capsule()
+                                    .fill(coordinator.currentView == tab.view ? Color(nsColor: .secondarySystemFill) : Color.clear)
+                                    .matchedGeometryEffect(id: "capsule", in: animation)
+                                    .hidden()
+                            }
                         }
+                        .id(tab.view)
                     }
+                }
+                .fixedSize(horizontal: true, vertical: false)
+                .background {
+                    GeometryReader { geometry in
+                        Color.clear.preference(
+                            key: TabContentWidthPreferenceKey.self,
+                            value: geometry.size.width
+                        )
+                    }
+                }
+            }
+            .frame(height: 26)
+            .background {
+                GeometryReader { geometry in
+                    Color.clear.preference(
+                        key: TabViewportWidthPreferenceKey.self,
+                        value: geometry.size.width
+                    )
+                }
+            }
+            .onPreferenceChange(TabContentWidthPreferenceKey.self) { contentWidth = $0 }
+            .onPreferenceChange(TabViewportWidthPreferenceKey.self) { viewportWidth = $0 }
+            .scrollDisabled(!isOverflowing)
+            .excludesHorizontalTrackpadNavigation(isOverflowing)
+            .clipShape(Capsule())
+            .onChange(of: coordinator.currentView) { _, selection in
+                scrollSelectionIntoView(selection, using: proxy)
+            }
+            .onChange(of: isOverflowing) { _, overflowing in
+                guard overflowing else { return }
+                scrollSelectionIntoView(coordinator.currentView, using: proxy)
             }
         }
-        .clipShape(Capsule())
+    }
+
+    private var isOverflowing: Bool {
+        viewportWidth > 0 && contentWidth > viewportWidth + 1
     }
 
     private var visibleTabs: [TabModel] {
@@ -87,6 +128,16 @@ struct TabSelectionView: View {
         return tintedTabIcons ? tabModel(for: view)?.tint ?? .white : .white
     }
 
+    private func scrollSelectionIntoView(
+        _ selection: NotchViews,
+        using proxy: ScrollViewProxy
+    ) {
+        guard isOverflowing, visibleTabs.contains(where: { $0.view == selection }) else { return }
+        withAnimation(.smooth(duration: 0.25)) {
+            proxy.scrollTo(selection, anchor: .center)
+        }
+    }
+
     private func tabModel(for view: NotchViews) -> TabModel? {
         switch view {
         case .home:
@@ -96,7 +147,8 @@ struct TabSelectionView: View {
         case .shelf:
             return TabModel(label: "Shelf", icon: "tray.fill", view: view, tint: .blue)
         case .activity(let id):
-            guard let activity = activityRegistry.activity(for: id), activity.isAvailable else {
+            guard let activity = activityRegistry.activity(for: id),
+                  activityRegistry.isActivityAvailable(id) else {
                 return nil
             }
             return TabModel(
@@ -106,6 +158,22 @@ struct TabSelectionView: View {
                 tint: activity.metadata.tint
             )
         }
+    }
+}
+
+private struct TabContentWidthPreferenceKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+private struct TabViewportWidthPreferenceKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }
 

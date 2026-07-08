@@ -60,9 +60,9 @@ struct SettingsView: View {
                 NavigationLink(value: "Shortcuts") {
                     Label("Shortcuts", systemImage: "keyboard")
                 }
-                // NavigationLink(value: "Extensions") {
-                //     Label("Extensions", systemImage: "puzzlepiece.extension")
-                // }
+                NavigationLink(value: "Extensions") {
+                    Label("Extensions", systemImage: "puzzlepiece.extension")
+                }
                 NavigationLink(value: "Advanced") {
                     Label("Advanced", systemImage: "gearshape.2")
                 }
@@ -98,7 +98,7 @@ struct SettingsView: View {
                 case "Shortcuts":
                     Shortcuts()
                 case "Extensions":
-                    GeneralSettings()
+                    ExtensionsSettings()
                 case "Advanced":
                     Advanced()
                 case "About":
@@ -134,6 +134,46 @@ struct SettingsView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("AccentColorChanged"))) { _ in
             accentColorUpdateTrigger = UUID()
         }
+    }
+}
+
+struct ExtensionsSettings: View {
+    @ObservedObject private var activityRegistry = ActivityRegistry.shared
+
+    var body: some View {
+        Form {
+            Section {
+                ForEach(activityRegistry.activities) { activity in
+                    Toggle(
+                        isOn: Binding(
+                            get: { activityRegistry.isActivityEnabled(activity.id) },
+                            set: { activityRegistry.setActivityEnabled($0, for: activity.id) }
+                        )
+                    ) {
+                        HStack(spacing: 10) {
+                            Image(systemName: activity.metadata.systemImage)
+                                .foregroundStyle(activity.metadata.tint)
+                                .frame(width: 18)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(activity.metadata.name)
+                                if !activity.isAvailable {
+                                    Text("Currently unavailable")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    }
+                    .tint(.effectiveAccent)
+                }
+            } header: {
+                Text("Installed extensions")
+            } footer: {
+                Text("Disabled extensions are hidden from the open notch and cannot appear as live activities.")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .navigationTitle("Extensions")
     }
 }
 

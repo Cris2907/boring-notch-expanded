@@ -538,7 +538,8 @@ struct ContentView: View {
                         case .home:
                             NotchHomeView(albumArtNamespace: albumArtNamespace)
                         case .activity(let id):
-                            if let activity = activityRegistry.activity(for: id), activity.isAvailable {
+                            if let activity = activityRegistry.activity(for: id),
+                               activityRegistry.isActivityAvailable(id) {
                                 ExpandedActivityView(activity: activity)
                             }
                         case .activities:
@@ -625,7 +626,7 @@ struct ContentView: View {
     }
 
     private func destinationView(forLiveActivityID activityID: ActivityID) -> NotchViews? {
-        if let activity = activityRegistry.activity(for: activityID), activity.isAvailable {
+        if activityRegistry.isActivityAvailable(activityID) {
             return .activity(activityID)
         }
 

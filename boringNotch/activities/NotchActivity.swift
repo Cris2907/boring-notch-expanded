@@ -287,6 +287,29 @@ final class AnyLiveActivityPresentationProvider: ObservableObject, Identifiable 
         }
     }
 
+    init(activity: AnyNotchActivity, registry: ActivityRegistry) {
+        id = activity.id
+        name = activity.metadata.name
+        presentationState = {
+            registry.isActivityAvailable(activity.id) ? activity.livePresentationState : .hidden
+        }
+        minimalPresentationAccessoryVisibility = { true }
+        presentationSizing = { activity.livePresentationSizing }
+        accessoryView = {
+            AnyView(
+                Image(systemName: activity.metadata.systemImage)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(activity.metadata.tint)
+                    .accessibilityHidden(true)
+            )
+        }
+        fullView = { activity.makeLivePresentationView() }
+        minimalView = { activity.makeMinimalLivePresentationView() }
+        providerObservation = registry.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }
+    }
+
     var livePresentationState: ActivityLivePresentationState { presentationState() }
     var showsAccessoryInMinimalPresentation: Bool { minimalPresentationAccessoryVisibility() }
     var livePresentationSizing: LiveActivityPresentationSizing { presentationSizing() }
@@ -306,19 +329,28 @@ final class LiveActivityPresentationProviderRegistry: ObservableObject {
         ]
     )
 
-    let providers: [AnyLiveActivityPresentationProvider]
+    private let activityRegistry: ActivityRegistry
+    private let registeredActivityProviders: [AnyLiveActivityPresentationProvider]
+    private let additionalProviders: [AnyLiveActivityPresentationProvider]
 
     private var providerObservations: Set<AnyCancellable> = []
+
+    var providers: [AnyLiveActivityPresentationProvider] {
+        registeredActivityProviders.filter { activityRegistry.isActivityEnabled($0.id) }
+            + additionalProviders
+    }
 
     init(
         activityRegistry: ActivityRegistry,
         additionalProviders: [AnyLiveActivityPresentationProvider] = []
     ) {
-        providers = activityRegistry.activities.map {
-            AnyLiveActivityPresentationProvider(activity: $0)
-        } + additionalProviders
+        self.activityRegistry = activityRegistry
+        registeredActivityProviders = activityRegistry.activities.map {
+            AnyLiveActivityPresentationProvider(activity: $0, registry: activityRegistry)
+        }
+        self.additionalProviders = additionalProviders
 
-        for provider in providers {
+        for provider in registeredActivityProviders + additionalProviders {
             provider.objectWillChange
                 .sink { [weak self] in
                     self?.objectWillChange.send()
@@ -559,6 +591,10 @@ final class ActivityLivePresentationCoordinator: ObservableObject {
                 }
                 nextStartedSequences.removeValue(forKey: provider.id)
             }
+        }
+
+        nextStartedSequences = nextStartedSequences.filter {
+            nextEligibility[$0.key] != nil
         }
 
         knownEligibility = nextEligibility

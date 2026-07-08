@@ -58,6 +58,52 @@ final class ActivityArchitectureTests: XCTestCase {
         XCTAssertEqual(registry.activeActivities.map(\.id), [activity.id])
     }
 
+    func testUserEnablementIsDistinctFromRegistrationAndRuntimeAvailability() throws {
+        let enabled = TestActivity(id: "enabled", name: "Enabled")
+        let unavailable = TestActivity(id: "unavailable", name: "Unavailable")
+        unavailable.isAvailable = false
+        let enablementStore = ActivityEnablementStore()
+        let registry = try ActivityRegistry(enablementStore: enablementStore) {
+            enabled
+            unavailable
+        }
+
+        XCTAssertEqual(registry.activities.map(\.id), [enabled.id, unavailable.id])
+        XCTAssertEqual(registry.enabledActivities.map(\.id), [enabled.id, unavailable.id])
+        XCTAssertEqual(registry.availableActivityIDs, [enabled.id])
+
+        registry.setActivityEnabled(false, for: enabled.id)
+
+        XCTAssertEqual(registry.activities.map(\.id), [enabled.id, unavailable.id])
+        XCTAssertEqual(registry.enabledActivities.map(\.id), [unavailable.id])
+        XCTAssertTrue(registry.availableActivityIDs.isEmpty)
+        XCTAssertFalse(registry.isActivityEnabled(enabled.id))
+        XCTAssertFalse(registry.isActivityAvailable(enabled.id))
+        XCTAssertEqual(
+            resolvedNotchView(
+                .activity(enabled.id),
+                availableActivityIDs: registry.availableActivityIDs,
+                includesShelf: false
+            ),
+            .home
+        )
+    }
+
+    func testEnablementStorePersistsDisabledActivityIDs() {
+        let first = ActivityID("first")
+        let second = ActivityID("second")
+        var persistedValues: [[String]] = []
+        let store = ActivityEnablementStore { persistedValues.append($0) }
+
+        store.setEnabled(false, for: second)
+        store.setEnabled(false, for: first)
+        store.setEnabled(true, for: second)
+
+        XCTAssertEqual(persistedValues, [["second"], ["first", "second"], ["first"]])
+        XCTAssertFalse(store.isEnabled(first))
+        XCTAssertTrue(store.isEnabled(second))
+    }
+
     func testStateChangesPropagateThroughTypeErasureAndRegistry() throws {
         let activity = TestActivity(id: "observable", name: "Observable")
         let registry = try ActivityRegistry { activity }
@@ -114,6 +160,35 @@ final class ActivityArchitectureTests: XCTestCase {
             selectedActivityLivePresentationStack(from: registry.activities, snapshot: .empty),
             contains: [eligible.id]
         )
+    }
+
+    func testDisablingRegisteredActivityRemovesAndReenablesLiveEligibility() async throws {
+        let activity = LiveTestActivity(
+            id: "toggle-live",
+            state: .visible(priority: .normal)
+        )
+        let enablementStore = ActivityEnablementStore()
+        let activityRegistry = try ActivityRegistry(enablementStore: enablementStore) {
+            activity
+        }
+        let liveRegistry = LiveActivityPresentationProviderRegistry(
+            activityRegistry: activityRegistry
+        )
+        let coordinator = ActivityLivePresentationCoordinator(registry: liveRegistry)
+
+        assertStack(selectedStack(from: liveRegistry, coordinator: coordinator), contains: [activity.id])
+
+        activityRegistry.setActivityEnabled(false, for: activity.id)
+        await coordinator.waitForPendingReconciliation()
+        XCTAssertTrue(liveRegistry.providers.isEmpty)
+        assertStack(selectedStack(from: liveRegistry, coordinator: coordinator), contains: [])
+        XCTAssertNil(coordinator.snapshot.startedSequence(for: activity.id))
+
+        activityRegistry.setActivityEnabled(true, for: activity.id)
+        await coordinator.waitForPendingReconciliation()
+        XCTAssertEqual(liveRegistry.providers.map(\.id), [activity.id])
+        assertStack(selectedStack(from: liveRegistry, coordinator: coordinator), contains: [activity.id])
+        XCTAssertNotNil(coordinator.snapshot.startedSequence(for: activity.id))
     }
 
     func testSingleEligibleLiveSelectionUsesFullPresentation() throws {
@@ -502,6 +577,10 @@ final class ActivityArchitectureTests: XCTestCase {
             ),
             [.home, .activity(ActivityID("registered")), .activities]
         )
+
+        registry.setActivityEnabled(false, for: ActivityID("registered"))
+
+        XCTAssertEqual(liveRegistry.providers.map(\.id), [.time, .media])
     }
 
     func testUnifiedProvidersUseOneRecencyAndPromotionFlow() async throws {
