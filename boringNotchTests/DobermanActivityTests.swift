@@ -133,16 +133,16 @@ final class DobermanActivityTests: XCTestCase {
             ),
             664
         )
-        XCTAssertEqual(DobermanAnimationDefinitions.movementDurationMilliseconds(for: 100), 2800)
-        XCTAssertEqual(DobermanAnimationDefinitions.movementDurationMilliseconds(for: 500), 2800)
-        XCTAssertEqual(DobermanAnimationDefinitions.movementDurationMilliseconds(for: 2000), 7500)
+        XCTAssertEqual(DobermanAnimationDefinitions.movementDurationMilliseconds(for: 100), 3500)
+        XCTAssertEqual(DobermanAnimationDefinitions.movementDurationMilliseconds(for: 500), 3500)
+        XCTAssertEqual(DobermanAnimationDefinitions.movementDurationMilliseconds(for: 2000), 9000)
         XCTAssertEqual(
             DobermanAnimationDefinitions.visibleX(
                 for: -100,
                 stageWidth: 640,
                 spriteWidth: spriteWidth
             ),
-            32
+            90
         )
         XCTAssertEqual(
             DobermanAnimationDefinitions.visibleX(
@@ -150,9 +150,9 @@ final class DobermanActivityTests: XCTestCase {
                 stageWidth: 640,
                 spriteWidth: spriteWidth
             ),
-            488
+            430
         )
-        XCTAssertEqual(DobermanAnimationDefinitions.worldTravelMultiplier, 1.18)
+        XCTAssertEqual(DobermanAnimationDefinitions.worldTravelMultiplier, 1.55)
     }
 
     func testCloseNormalizationUsesOnlyJSXDerivedTransitions() {

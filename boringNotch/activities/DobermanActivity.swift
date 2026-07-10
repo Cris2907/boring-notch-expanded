@@ -267,8 +267,8 @@ enum DobermanAnimationDefinitions {
     static let movementStartDelayMilliseconds = 50
     static let walkingBobStepMilliseconds = 180
     static let defaultStageWidth: CGFloat = 640
-    static let sceneEdgeInset: CGFloat = 32
-    static let worldTravelMultiplier: CGFloat = 1.18
+    static let sceneEdgeInset: CGFloat = 90
+    static let worldTravelMultiplier: CGFloat = 1.55
 
     static let defaultFrame = frame("1.1")
 
@@ -371,7 +371,7 @@ enum DobermanAnimationDefinitions {
     }
 
     static func movementDurationMilliseconds(for distance: CGFloat) -> Int {
-        Int(round(min(7500, max(2800, abs(distance) * 5.5))))
+        Int(round(min(9000, max(3500, abs(distance) * 7))))
     }
 
     static func visibleX(
@@ -1465,7 +1465,7 @@ final class DobermanAnimationModel: ObservableObject {
             ? animation.frameDurationMilliseconds
             : step.durationMilliseconds
             ?? DobermanAnimationDefinitions.movementDurationMilliseconds(
-                for: worldDistance
+                for: intendedDistance
             )
 
         try ensureCurrent(token)
