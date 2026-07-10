@@ -911,6 +911,16 @@
     "%lld min" : {
 
     },
+    "%lld percent%@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld percent%2$@"
+          }
+        }
+      }
+    },
     "%lld/%lld" : {
       "localizations" : {
         "en" : {
@@ -1322,6 +1332,9 @@
       }
     },
     "1 focus completed" : {
+
+    },
+    "A sleeping Doberman companion for the notch." : {
 
     },
     "About" : {
@@ -3639,6 +3652,9 @@
           }
         }
       }
+    },
+    "Behavior" : {
+
     },
     "Bluetooth headphones" : {
 
@@ -7486,6 +7502,15 @@
     "Dismiss timer" : {
       "extractionState" : "manual"
     },
+    "Doberman" : {
+
+    },
+    "Doberman in the scene" : {
+
+    },
+    "Doberman settings" : {
+
+    },
     "Done" : {
       "extractionState" : "manual"
     },
@@ -8196,6 +8221,9 @@
         }
       }
     },
+    "Enable autonomous behaviors" : {
+
+    },
     "Enable blur effect behind album art" : {
       "localizations" : {
         "ar" : {
@@ -8797,6 +8825,12 @@
         }
       }
     },
+    "Enable needs system" : {
+
+    },
+    "Enable random movement" : {
+
+    },
     "Enable shelf" : {
       "localizations" : {
         "ar" : {
@@ -8998,6 +9032,9 @@
       }
     },
     "Enabled" : {
+
+    },
+    "Energy" : {
 
     },
     "Enhance your experience with HUDs" : {
@@ -11723,6 +11760,9 @@
           }
         }
       }
+    },
+    "Hunger" : {
+
     },
     "In progress" : {
       "localizations" : {
@@ -17097,6 +17137,9 @@
     "Ready" : {
 
     },
+    "Reduce motion" : {
+
+    },
     "Release name" : {
       "localizations" : {
         "ar" : {
@@ -20448,6 +20491,9 @@
         }
       }
     },
+    "Show status panel" : {
+
+    },
     "Skip session" : {
 
     },
@@ -21485,6 +21531,9 @@
           }
         }
       }
+    },
+    "Thirst" : {
+
     },
     "Time activity" : {
       "extractionState" : "manual"

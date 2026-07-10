@@ -170,6 +170,28 @@ extension Defaults.Keys {
         "quickNotesShowContentInLivePreview",
         default: true
     )
+
+    // MARK: Doberman
+    static let dobermanVirtualPetNeedsEnabled = Key<Bool>(
+        "dobermanVirtualPetNeedsEnabled",
+        default: true
+    )
+    static let dobermanAutonomousBehaviorsEnabled = Key<Bool>(
+        "dobermanAutonomousBehaviorsEnabled",
+        default: true
+    )
+    static let dobermanRandomMovementEnabled = Key<Bool>(
+        "dobermanRandomMovementEnabled",
+        default: true
+    )
+    static let dobermanShowStatusPanel = Key<Bool>(
+        "dobermanShowStatusPanel",
+        default: true
+    )
+    static let dobermanReduceMotion = Key<Bool>(
+        "dobermanReduceMotion",
+        default: false
+    )
     
     // MARK: Media playback
     static let coloredSpectrogram = Key<Bool>("coloredSpectrogram", default: true)

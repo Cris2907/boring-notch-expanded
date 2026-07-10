@@ -1,3 +1,4 @@
+import Defaults
 import SwiftUI
 import XCTest
 @testable import boringNotch
@@ -28,7 +29,7 @@ final class DobermanActivityTests: XCTestCase {
                 minimalContentWidth: .fixed(36)
             )
         )
-        XCTAssertFalse(activity.supportsConfiguration)
+        XCTAssertTrue(activity.supportsConfiguration)
         XCTAssertTrue(activity.isAvailable)
     }
 
@@ -163,11 +164,297 @@ final class DobermanActivityTests: XCTestCase {
     func testViewsShareInjectedAnimationModel() {
         let model = DobermanAnimationModel(startsSleeping: false)
         defer { model.cancelAll() }
+        let needs = makeNeedsModel()
+        let controller = DobermanBehaviorController(animationModel: model, needsModel: needs)
 
-        let expanded = DobermanExpandedActivityView(model: model)
+        let expanded = DobermanExpandedActivityView(
+            model: model,
+            needsModel: needs,
+            behaviorController: controller
+        )
         let live = DobermanLivePresentationView(model: model)
 
         XCTAssertTrue(expanded.model === model)
+        XCTAssertTrue(expanded.needsModel === needs)
+        XCTAssertTrue(expanded.behaviorController === controller)
         XCTAssertTrue(live.model === model)
+    }
+
+    func testNeedsDefaultValuesAndPersistenceRestoration() {
+        withVirtualPetNeedsEnabled(true) {
+            var currentDate = Date(timeIntervalSince1970: 1_000)
+            let defaults = makeDefaultsSuite()
+            let needs = DobermanNeedsModel(
+                defaults: defaults,
+                now: { currentDate },
+                observesSettings: false
+            )
+
+            XCTAssertEqual(needs.hunger, 100)
+            XCTAssertEqual(needs.thirst, 100)
+            XCTAssertEqual(needs.energy, 100)
+
+            currentDate = Date(timeIntervalSince1970: 2_000)
+            needs.setNeeds(hunger: 64, thirst: 52, energy: 41, at: currentDate)
+
+            let restored = DobermanNeedsModel(
+                defaults: defaults,
+                now: { currentDate },
+                observesSettings: false
+            )
+
+            XCTAssertEqual(restored.hunger, 64)
+            XCTAssertEqual(restored.thirst, 52)
+            XCTAssertEqual(restored.energy, 41)
+            XCTAssertEqual(restored.lastUpdatedAt, currentDate)
+        }
+    }
+
+    func testNeedsElapsedDecayRecoveryAndClamping() {
+        withVirtualPetNeedsEnabled(true) {
+            var currentDate = Date(timeIntervalSince1970: 0)
+            let needs = DobermanNeedsModel(
+                defaults: makeDefaultsSuite(),
+                now: { currentDate },
+                observesSettings: false
+            )
+
+            needs.setNeeds(hunger: 50, thirst: 50, energy: 50, at: currentDate)
+
+            currentDate = Date(timeIntervalSince1970: 3600)
+            needs.reconcile(mode: .awake)
+            XCTAssertEqual(needs.hunger, 46)
+            XCTAssertEqual(needs.thirst, 44)
+            XCTAssertEqual(needs.energy, 42)
+
+            currentDate = Date(timeIntervalSince1970: 7200)
+            needs.reconcile(mode: .sleeping)
+            XCTAssertEqual(needs.hunger, 42)
+            XCTAssertEqual(needs.thirst, 38)
+            XCTAssertEqual(needs.energy, 60)
+
+            currentDate = Date(timeIntervalSince1970: 72_000)
+            needs.reconcile(mode: .closedSleeping)
+            XCTAssertEqual(needs.hunger, 0)
+            XCTAssertEqual(needs.thirst, 0)
+            XCTAssertEqual(needs.energy, 100)
+        }
+    }
+
+    func testDisabledNeedsPreserveValuesAndAdvanceTimestamp() {
+        withVirtualPetNeedsEnabled(false) {
+            var currentDate = Date(timeIntervalSince1970: 0)
+            let needs = DobermanNeedsModel(
+                defaults: makeDefaultsSuite(),
+                now: { currentDate },
+                observesSettings: false
+            )
+            needs.setNeeds(hunger: 25, thirst: 35, energy: 45, at: currentDate)
+
+            currentDate = Date(timeIntervalSince1970: 24 * 3600)
+            needs.reconcile(mode: .awake)
+            needs.feed()
+            needs.giveWater()
+
+            XCTAssertFalse(needs.isEnabled)
+            XCTAssertEqual(needs.hunger, 25)
+            XCTAssertEqual(needs.thirst, 35)
+            XCTAssertEqual(needs.energy, 45)
+            XCTAssertEqual(needs.lastUpdatedAt, currentDate)
+        }
+    }
+
+    func testBehaviorWeightsPreventImmediateRepeatAndRespectNeeds() {
+        let lowEnergyActions = DobermanBehaviorController.weightedActions(
+            needs: DobermanNeedLevels(hunger: 100, thirst: 100, energy: 10, isEnabled: true),
+            pose: .standing,
+            lastAction: .walk
+        )
+        let lowEnergyWeights = Dictionary(
+            uniqueKeysWithValues: lowEnergyActions.map { ($0.action, $0.weight) }
+        )
+
+        XCTAssertNil(lowEnergyWeights[.walk])
+        XCTAssertGreaterThan(lowEnergyWeights[.sleep] ?? 0, lowEnergyWeights[.excited] ?? 0)
+
+        let highEnergyActions = DobermanBehaviorController.weightedActions(
+            needs: DobermanNeedLevels(hunger: 100, thirst: 100, energy: 95, isEnabled: true),
+            pose: .standing,
+            lastAction: nil
+        )
+        let highEnergyWeights = Dictionary(
+            uniqueKeysWithValues: highEnergyActions.map { ($0.action, $0.weight) }
+        )
+
+        XCTAssertGreaterThan(highEnergyWeights[.walk] ?? 0, highEnergyWeights[.sleep] ?? 0)
+        XCTAssertGreaterThan(highEnergyWeights[.excited] ?? 0, 0)
+    }
+
+    func testBehaviorWeightsPreferFoodWaterNeedsAndAvoidImmediateWakeAfterSleep() {
+        let hungryThirstyActions = DobermanBehaviorController.weightedActions(
+            needs: DobermanNeedLevels(hunger: 5, thirst: 8, energy: 80, isEnabled: true),
+            pose: .sitting,
+            lastAction: nil
+        )
+        let hungryThirstyWeights = Dictionary(
+            uniqueKeysWithValues: hungryThirstyActions.map { ($0.action, $0.weight) }
+        )
+
+        XCTAssertGreaterThan(hungryThirstyWeights[.eat] ?? 0, hungryThirstyWeights[.scratch] ?? 0)
+        XCTAssertGreaterThan(hungryThirstyWeights[.drink] ?? 0, hungryThirstyWeights[.scratch] ?? 0)
+
+        let afterSleepActions = DobermanBehaviorController.weightedActions(
+            needs: DobermanNeedLevels(hunger: 100, thirst: 100, energy: 100, isEnabled: true),
+            pose: .sleeping,
+            lastAction: .sleep
+        )
+        let afterSleepActionNames = Set(afterSleepActions.map(\.action))
+
+        XCTAssertFalse(afterSleepActionNames.contains(.walk))
+        XCTAssertFalse(afterSleepActionNames.contains(.standFromLaying))
+        XCTAssertFalse(afterSleepActionNames.contains(.excited))
+    }
+
+    func testWeightedSelectionUsesStableOrder() {
+        let actions = [
+            DobermanWeightedBehaviorAction(action: .sleep, weight: 1),
+            DobermanWeightedBehaviorAction(action: .walk, weight: 3)
+        ]
+
+        XCTAssertEqual(
+            DobermanBehaviorController.selectWeightedAction(from: actions, randomValue: 0),
+            .sleep
+        )
+        XCTAssertEqual(
+            DobermanBehaviorController.selectWeightedAction(from: actions, randomValue: 0.4),
+            .walk
+        )
+    }
+
+    func testPlaceholderBehaviorMappingsAreCentralized() throws {
+        let eat = try XCTUnwrap(DobermanPlaceholderBehaviorMappings.mapping(for: .eat))
+        XCTAssertEqual(eat.requiredPose, .sitting)
+        XCTAssertEqual(eat.execution, .animations([.sitHold]))
+
+        let drink = try XCTUnwrap(DobermanPlaceholderBehaviorMappings.mapping(for: .drink))
+        XCTAssertEqual(drink.requiredPose, .laying)
+        XCTAssertEqual(drink.execution, .animations([.layHold]))
+
+        let excited = try XCTUnwrap(DobermanPlaceholderBehaviorMappings.mapping(for: .excited))
+        XCTAssertEqual(excited.requiredPose, .standing)
+        XCTAssertEqual(excited.execution, .activeWalk)
+    }
+
+    func testLifecycleReferenceCountingUsesBehaviorControllerGeneration() {
+        let model = DobermanAnimationModel(timingScale: 0, startsSleeping: false)
+        defer { model.cancelAll() }
+        let needs = makeNeedsModel()
+        let controller = DobermanBehaviorController(animationModel: model, needsModel: needs)
+        let activity = DobermanActivity(
+            model: model,
+            needsModel: needs,
+            behaviorController: controller
+        )
+
+        activity.activityDidAppear()
+        let firstBehaviorGeneration = controller.generation
+        let firstAnimationGeneration = model.generation
+
+        activity.activityDidAppear()
+        XCTAssertEqual(controller.generation, firstBehaviorGeneration)
+        XCTAssertEqual(model.generation, firstAnimationGeneration)
+
+        activity.activityDidDisappear()
+        XCTAssertEqual(controller.generation, firstBehaviorGeneration)
+        XCTAssertEqual(model.generation, firstAnimationGeneration)
+
+        activity.activityDidDisappear()
+        XCTAssertEqual(controller.generation, firstBehaviorGeneration + 1)
+        XCTAssertEqual(model.generation, firstAnimationGeneration + 1)
+    }
+
+    func testFeedAndWaterInterruptAmbientAndIncreaseNeeds() async {
+        await withVirtualPetNeedsEnabled(true) {
+            let model = DobermanAnimationModel(timingScale: 0, startsSleeping: false)
+            defer { model.cancelAll() }
+            let fixedDate = Date(timeIntervalSince1970: 0)
+            let needs = makeNeedsModel(now: { fixedDate })
+            needs.setNeeds(hunger: 20, thirst: 20, energy: 80)
+            let controller = DobermanBehaviorController(
+                animationModel: model,
+                needsModel: needs,
+                randomDouble: { 0 },
+                randomPercent: { 50 }
+            )
+
+            controller.transitionToExpanded()
+            let expandedGeneration = controller.generation
+            controller.feed()
+            XCTAssertEqual(controller.generation, expandedGeneration + 1)
+            XCTAssertEqual(controller.currentAction, .eat)
+
+            for _ in 0..<20 where needs.hunger <= 20 {
+                await Task.yield()
+            }
+            XCTAssertGreaterThan(needs.hunger, 20)
+
+            controller.giveWater()
+            XCTAssertEqual(controller.currentAction, .drink)
+            for _ in 0..<20 where needs.thirst <= 20 {
+                await Task.yield()
+            }
+            XCTAssertGreaterThan(needs.thirst, 20)
+
+            controller.transitionToClosed()
+        }
+    }
+
+    private func makeNeedsModel(
+        enabled: Bool = true,
+        now: @escaping () -> Date = Date.init
+    ) -> DobermanNeedsModel {
+        withVirtualPetNeedsEnabled(enabled) {
+            DobermanNeedsModel(
+                defaults: makeDefaultsSuite(),
+                now: now,
+                observesSettings: false
+            )
+        }
+    }
+
+    private func makeDefaultsSuite(
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> UserDefaults {
+        let suiteName = "DobermanActivityTests.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Unable to create defaults suite", file: file, line: line)
+            return .standard
+        }
+
+        defaults.removePersistentDomain(forName: suiteName)
+        return defaults
+    }
+
+    @discardableResult
+    private func withVirtualPetNeedsEnabled<T>(
+        _ isEnabled: Bool,
+        _ body: () -> T
+    ) -> T {
+        let previousValue = Defaults[.dobermanVirtualPetNeedsEnabled]
+        Defaults[.dobermanVirtualPetNeedsEnabled] = isEnabled
+        defer { Defaults[.dobermanVirtualPetNeedsEnabled] = previousValue }
+        return body()
+    }
+
+    @discardableResult
+    private func withVirtualPetNeedsEnabled<T>(
+        _ isEnabled: Bool,
+        _ body: () async -> T
+    ) async -> T {
+        let previousValue = Defaults[.dobermanVirtualPetNeedsEnabled]
+        Defaults[.dobermanVirtualPetNeedsEnabled] = isEnabled
+        defer { Defaults[.dobermanVirtualPetNeedsEnabled] = previousValue }
+        return await body()
     }
 }

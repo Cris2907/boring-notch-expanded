@@ -1,8 +1,15 @@
+import Combine
+import Defaults
+import Foundation
 import SwiftUI
 
 extension ActivityID {
     static let doberman = ActivityID("builtin.doberman")
 }
+
+private let dobermanSceneContentHeight: CGFloat = 220
+private let dobermanOpenNotchChromeReserve: CGFloat = 40
+private let dobermanExpandedBottomMargin: CGFloat = 20
 
 @MainActor
 final class DobermanActivity: NotchActivity {
@@ -13,17 +20,35 @@ final class DobermanActivity: NotchActivity {
         name: String(localized: "Doberman"),
         systemImage: "pawprint.fill",
         tint: .brown,
+        // The shared open-notch container also lays out pagination and its rounded bottom edge.
+        preferredExpandedHeight: dobermanSceneContentHeight + dobermanOpenNotchChromeReserve,
         summary: String(localized: "A sleeping Doberman companion for the notch.")
     )
 
     let model: DobermanAnimationModel
+    let needsModel: DobermanNeedsModel
+    let behaviorController: DobermanBehaviorController
     @Published private(set) var expandedAppearanceCount = 0
 
-    init(model: DobermanAnimationModel? = nil) {
-        self.model = model ?? DobermanAnimationModel()
+    init(
+        model: DobermanAnimationModel? = nil,
+        needsModel: DobermanNeedsModel? = nil,
+        behaviorController: DobermanBehaviorController? = nil
+    ) {
+        let resolvedModel = model ?? DobermanAnimationModel()
+        let resolvedNeedsModel = needsModel ?? DobermanNeedsModel()
+
+        self.model = resolvedModel
+        self.needsModel = resolvedNeedsModel
+        self.behaviorController = behaviorController
+            ?? DobermanBehaviorController(
+                animationModel: resolvedModel,
+                needsModel: resolvedNeedsModel
+            )
     }
 
     var isActive: Bool { true }
+    var supportsConfiguration: Bool { true }
 
     var livePresentationState: ActivityLivePresentationState {
         expandedAppearanceCount == 0 ? .visible(priority: .low) : .hidden
@@ -35,7 +60,11 @@ final class DobermanActivity: NotchActivity {
     )
 
     func makeExpandedView() -> some View {
-        DobermanExpandedActivityView(model: model)
+        DobermanExpandedActivityView(
+            model: model,
+            needsModel: needsModel,
+            behaviorController: behaviorController
+        )
     }
 
     func makeLivePresentationView() -> some View {
@@ -46,17 +75,21 @@ final class DobermanActivity: NotchActivity {
         DobermanLivePresentationView(model: model)
     }
 
+    func makeConfigurationView() -> some View {
+        DobermanSettingsView(needsModel: needsModel)
+    }
+
     func activityDidAppear() {
         expandedAppearanceCount += 1
         guard expandedAppearanceCount == 1 else { return }
-        model.transitionToExpanded()
+        behaviorController.transitionToExpanded()
     }
 
     func activityDidDisappear() {
         guard expandedAppearanceCount > 0 else { return }
         expandedAppearanceCount -= 1
         guard expandedAppearanceCount == 0 else { return }
-        model.transitionToClosed()
+        behaviorController.transitionToClosed()
     }
 }
 
@@ -114,6 +147,75 @@ enum DobermanMovementTarget: Equatable, Sendable {
     case center
     case exit
     case percent(CGFloat)
+}
+
+enum DobermanBehaviorState: Equatable, Sendable {
+    case idle, walking, sleeping, eating, drinking, playing, lookingAround, transitioning
+}
+
+enum DobermanInterruptibility: Equatable, Sendable {
+    case immediate, afterFrame, afterLoop, never
+}
+
+struct DobermanAnimationClip: Equatable, Sendable {
+    let id: String
+    let frames: [DobermanSpriteFrame]
+    let frameDuration: TimeInterval
+    let loops: Bool
+    let interruptibility: DobermanInterruptibility
+    let movementSpeed: CGFloat?
+}
+
+enum DobermanFacingDirection: Equatable, Sendable {
+    case left, right
+
+    var scaleX: CGFloat { self == .left ? -1 : 1 }
+}
+
+enum DobermanSceneDestination: Equatable, Sendable {
+    case randomIdlePoint, foodBowl, waterBowl, bed, playArea
+
+    var percent: CGFloat {
+        switch self {
+        case .randomIdlePoint: 50
+        case .foodBowl: 18
+        case .waterBowl: 82
+        case .bed: 12
+        case .playArea: 62
+        }
+    }
+}
+
+@MainActor
+final class DobermanMovementController: ObservableObject {
+    static let horizontalPadding: CGFloat = 12
+    static let minimumTravel: CGFloat = 36
+
+    @Published private(set) var currentX: CGFloat
+    @Published private(set) var targetX: CGFloat
+    @Published private(set) var facingDirection: DobermanFacingDirection = .right
+    private(set) var sceneWidth: CGFloat = DobermanAnimationDefinitions.defaultStageWidth
+
+    init(currentX: CGFloat = 0) {
+        self.currentX = currentX
+        self.targetX = currentX
+    }
+
+    func updateSceneWidth(_ width: CGFloat) { sceneWidth = max(0, width) }
+
+    func destinationX(for destination: DobermanSceneDestination, spriteWidth: CGFloat) -> CGFloat {
+        let available = max(0, sceneWidth - spriteWidth - Self.horizontalPadding * 2)
+        let proposed = Self.horizontalPadding + available * destination.percent / 100
+        return min(sceneWidth - spriteWidth - Self.horizontalPadding, max(Self.horizontalPadding, proposed))
+    }
+
+    func beginMovement(to x: CGFloat) {
+        guard abs(x - currentX) >= Self.minimumTravel else { return }
+        targetX = x
+        facingDirection = x < currentX ? .left : .right
+    }
+
+    func arrive() { currentX = targetX }
 }
 
 struct DobermanAnimationDefinition: Equatable, Sendable {
@@ -306,6 +408,7 @@ struct DobermanRenderState: Equatable, Sendable {
     var movementDuration: TimeInterval
     var isWalking: Bool
     var walkBobOffset: CGFloat
+    var facingDirection: DobermanFacingDirection
 
     static func initial() -> DobermanRenderState {
         let sleep = DobermanAnimationDefinitions.animation(.sleepLoop)
@@ -326,10 +429,667 @@ struct DobermanRenderState: Equatable, Sendable {
             x: centerX,
             movementDuration: 0,
             isWalking: false,
-            walkBobOffset: 0
+            walkBobOffset: 0,
+            facingDirection: .right
         )
     }
 }
+
+enum DobermanNeedsElapsedMode: Equatable, Sendable {
+    case awake
+    case sleeping
+    case closedSleeping
+}
+
+struct DobermanNeedLevels: Equatable, Sendable {
+    var hunger: Double
+    var thirst: Double
+    var energy: Double
+    var isEnabled: Bool
+
+    static let full = DobermanNeedLevels(
+        hunger: 100,
+        thirst: 100,
+        energy: 100,
+        isEnabled: true
+    )
+}
+
+private struct DobermanNeedsPersistenceSnapshot: Codable, Equatable {
+    var hunger: Double
+    var thirst: Double
+    var energy: Double
+    var lastUpdatedAt: Date
+}
+
+@MainActor
+final class DobermanNeedsModel: ObservableObject {
+    static let persistenceKey = "dobermanVirtualPetNeedsSnapshot"
+    static let hungerDecayPerHour = 4.0
+    static let thirstDecayPerHour = 6.0
+    static let awakeEnergyDecayPerHour = 8.0
+    static let sleepingEnergyRecoveryPerHour = 18.0
+    static let closedSleepingEnergyRecoveryPerHour = 12.0
+
+    @Published private(set) var hunger: Double
+    @Published private(set) var thirst: Double
+    @Published private(set) var energy: Double
+    @Published private(set) var isEnabled: Bool
+
+    private(set) var lastUpdatedAt: Date
+
+    var levels: DobermanNeedLevels {
+        DobermanNeedLevels(
+            hunger: hunger,
+            thirst: thirst,
+            energy: energy,
+            isEnabled: isEnabled
+        )
+    }
+
+    private let defaults: UserDefaults
+    private let nowProvider: () -> Date
+    private var settingsObservation: AnyCancellable?
+
+    init(
+        defaults: UserDefaults = .standard,
+        now: @escaping () -> Date = Date.init,
+        observesSettings: Bool = true
+    ) {
+        self.defaults = defaults
+        self.nowProvider = now
+        self.isEnabled = Defaults[.dobermanVirtualPetNeedsEnabled]
+
+        if let snapshot = Self.restoreSnapshot(from: defaults) {
+            hunger = Self.clamp(snapshot.hunger)
+            thirst = Self.clamp(snapshot.thirst)
+            energy = Self.clamp(snapshot.energy)
+            lastUpdatedAt = snapshot.lastUpdatedAt
+        } else {
+            hunger = 100
+            thirst = 100
+            energy = 100
+            lastUpdatedAt = now()
+        }
+
+        if observesSettings {
+            settingsObservation = Defaults.publisher(.dobermanVirtualPetNeedsEnabled)
+                .map(\.newValue)
+                .removeDuplicates()
+                .receive(on: RunLoop.main)
+                .sink { [weak self] isEnabled in
+                    self?.setNeedsEnabled(isEnabled)
+                }
+        }
+    }
+
+    func reconcile(mode: DobermanNeedsElapsedMode, at date: Date? = nil) {
+        let resolvedDate = date ?? nowProvider()
+        let elapsedHours = max(0, resolvedDate.timeIntervalSince(lastUpdatedAt)) / 3600
+        lastUpdatedAt = resolvedDate
+
+        guard isEnabled else {
+            persistSnapshot()
+            return
+        }
+
+        hunger = Self.clamp(hunger - Self.hungerDecayPerHour * elapsedHours)
+        thirst = Self.clamp(thirst - Self.thirstDecayPerHour * elapsedHours)
+
+        switch mode {
+        case .awake:
+            energy = Self.clamp(energy - Self.awakeEnergyDecayPerHour * elapsedHours)
+        case .sleeping:
+            energy = Self.clamp(energy + Self.sleepingEnergyRecoveryPerHour * elapsedHours)
+        case .closedSleeping:
+            energy = Self.clamp(
+                energy + Self.closedSleepingEnergyRecoveryPerHour * elapsedHours
+            )
+        }
+
+        persistSnapshot()
+    }
+
+    func feed(amount: Double = 30, at date: Date? = nil) {
+        reconcile(mode: .awake, at: date)
+        guard isEnabled else { return }
+        hunger = Self.clamp(hunger + amount)
+        persistSnapshot()
+    }
+
+    func giveWater(amount: Double = 35, at date: Date? = nil) {
+        reconcile(mode: .awake, at: date)
+        guard isEnabled else { return }
+        thirst = Self.clamp(thirst + amount)
+        persistSnapshot()
+    }
+
+    func setNeeds(
+        hunger: Double,
+        thirst: Double,
+        energy: Double,
+        at date: Date? = nil
+    ) {
+        self.hunger = Self.clamp(hunger)
+        self.thirst = Self.clamp(thirst)
+        self.energy = Self.clamp(energy)
+        lastUpdatedAt = date ?? nowProvider()
+        persistSnapshot()
+    }
+
+    static func clamp(_ value: Double) -> Double {
+        min(100, max(0, value))
+    }
+
+    private func setNeedsEnabled(_ isEnabled: Bool) {
+        guard self.isEnabled != isEnabled else { return }
+        self.isEnabled = isEnabled
+        lastUpdatedAt = nowProvider()
+        persistSnapshot()
+    }
+
+    private func persistSnapshot() {
+        let snapshot = DobermanNeedsPersistenceSnapshot(
+            hunger: hunger,
+            thirst: thirst,
+            energy: energy,
+            lastUpdatedAt: lastUpdatedAt
+        )
+
+        guard let data = try? JSONEncoder().encode(snapshot) else { return }
+        defaults.set(data, forKey: Self.persistenceKey)
+    }
+
+    private static func restoreSnapshot(
+        from defaults: UserDefaults
+    ) -> DobermanNeedsPersistenceSnapshot? {
+        guard let data = defaults.data(forKey: persistenceKey) else { return nil }
+        return try? JSONDecoder().decode(
+            DobermanNeedsPersistenceSnapshot.self,
+            from: data
+        )
+    }
+}
+
+enum DobermanBehaviorAction: String, CaseIterable, Equatable, Sendable {
+    case walk
+    case sit
+    case sitLookAround
+    case standFromSitting
+    case layDown
+    case layLookAround
+    case sleep
+    case standFromLaying
+    case eat
+    case drink
+    case excited
+    case scratch
+}
+
+struct DobermanWeightedBehaviorAction: Equatable, Sendable {
+    var action: DobermanBehaviorAction
+    var weight: Double
+}
+
+struct DobermanPlaceholderBehaviorMapping: Equatable, Sendable {
+    enum Execution: Equatable, Sendable {
+        case animations([DobermanAnimationName])
+        case activeWalk
+    }
+
+    var action: DobermanBehaviorAction
+    var requiredPose: DobermanCanonicalPose
+    var execution: Execution
+    var note: String
+}
+
+enum DobermanPlaceholderBehaviorMappings {
+    static func mapping(
+        for action: DobermanBehaviorAction
+    ) -> DobermanPlaceholderBehaviorMapping? {
+        switch action {
+        case .eat:
+            return DobermanPlaceholderBehaviorMapping(
+                action: action,
+                requiredPose: .sitting,
+                execution: .animations([.sitHold]),
+                note: "Placeholder: replace with eating frames when available."
+            )
+        case .drink:
+            return DobermanPlaceholderBehaviorMapping(
+                action: action,
+                requiredPose: .laying,
+                execution: .animations([.layHold]),
+                note: "Placeholder: replace with drinking frames when available."
+            )
+        case .excited:
+            return DobermanPlaceholderBehaviorMapping(
+                action: action,
+                requiredPose: .standing,
+                execution: .activeWalk,
+                note: "Placeholder: reuses the active walking frames until excited frames exist."
+            )
+        case .scratch:
+            return DobermanPlaceholderBehaviorMapping(
+                action: action,
+                requiredPose: .sitting,
+                execution: .animations([.sitLookAround]),
+                note: "Placeholder: replace with scratching frames when available."
+            )
+        default:
+            return nil
+        }
+    }
+}
+
+@MainActor
+final class DobermanBehaviorController: ObservableObject {
+    @Published private(set) var currentAction: DobermanBehaviorAction?
+    @Published private(set) var isExpanded = false
+    @Published private(set) var isInteracting = false
+
+    private(set) var generation = 0
+
+    private let animationModel: DobermanAnimationModel
+    private let needsModel: DobermanNeedsModel
+    private let randomDoubleProvider: () -> Double
+    private let randomPercentProvider: () -> CGFloat
+    private var behaviorTask: Task<Void, Never>?
+    private var lastAction: DobermanBehaviorAction?
+
+    init(
+        animationModel: DobermanAnimationModel,
+        needsModel: DobermanNeedsModel,
+        randomDouble: @escaping () -> Double = { Double.random(in: 0..<1) },
+        randomPercent: @escaping () -> CGFloat = { CGFloat.random(in: 15...85) }
+    ) {
+        self.animationModel = animationModel
+        self.needsModel = needsModel
+        self.randomDoubleProvider = randomDouble
+        self.randomPercentProvider = randomPercent
+    }
+
+    deinit {
+        behaviorTask?.cancel()
+    }
+
+    func transitionToExpanded() {
+        guard !isExpanded else { return }
+        isExpanded = true
+        needsModel.reconcile(mode: .closedSleeping)
+
+        let behaviorToken = beginBehaviorGeneration()
+        let animationToken = animationModel.beginControlledAnimation()
+        behaviorTask = Task { @MainActor [weak self] in
+            await self?.runExpandedBehavior(
+                behaviorToken: behaviorToken,
+                animationToken: animationToken
+            )
+        }
+    }
+
+    func transitionToClosed() {
+        guard isExpanded || behaviorTask != nil else { return }
+        isExpanded = false
+        _ = beginBehaviorGeneration()
+        currentAction = nil
+        isInteracting = false
+        needsModel.reconcile(mode: currentNeedsMode)
+        animationModel.transitionToClosed()
+    }
+
+    func feed() {
+        guard isExpanded, needsModel.isEnabled else { return }
+        startCareInteraction(.eat) { [weak self] in
+            self?.needsModel.feed()
+        }
+    }
+
+    func giveWater() {
+        guard isExpanded, needsModel.isEnabled else { return }
+        startCareInteraction(.drink) { [weak self] in
+            self?.needsModel.giveWater()
+        }
+    }
+
+    static func weightedActions(
+        needs: DobermanNeedLevels,
+        pose: DobermanCanonicalPose,
+        lastAction: DobermanBehaviorAction?
+    ) -> [DobermanWeightedBehaviorAction] {
+        var weights: [DobermanBehaviorAction: Double] = [:]
+
+        func add(_ action: DobermanBehaviorAction, weight: Double) {
+            weights[action, default: 0] += weight
+        }
+
+        switch pose {
+        case .standing, .walking:
+            add(.walk, weight: 18)
+            add(.sit, weight: 10)
+            add(.layDown, weight: 8)
+            add(.excited, weight: 4)
+            add(.scratch, weight: 5)
+            add(.sleep, weight: 4)
+        case .sitting:
+            add(.sitLookAround, weight: 12)
+            add(.standFromSitting, weight: 7)
+            add(.layDown, weight: 8)
+            add(.walk, weight: 12)
+            add(.scratch, weight: 6)
+            add(.sleep, weight: 4)
+            add(.excited, weight: 3)
+        case .laying:
+            add(.layLookAround, weight: 12)
+            add(.sleep, weight: 10)
+            add(.standFromLaying, weight: 8)
+            add(.walk, weight: 10)
+            add(.sit, weight: 5)
+        case .sleeping:
+            add(.sleep, weight: 12)
+            add(.layLookAround, weight: 8)
+            add(.standFromLaying, weight: 6)
+            add(.walk, weight: 8)
+        }
+
+        if needs.isEnabled {
+            add(.eat, weight: 2)
+            add(.drink, weight: 2)
+
+            if needs.energy < 35 {
+                weights[.sleep, default: 0] += 35 - needs.energy + 20
+                weights[.layDown, default: 0] += 18
+                weights[.layLookAround, default: 0] += 12
+                weights[.walk] = (weights[.walk] ?? 0) * 0.35
+                weights[.excited] = (weights[.excited] ?? 0) * 0.25
+            } else if needs.energy > 70 {
+                weights[.walk, default: 0] += 18
+                weights[.excited, default: 0] += 10
+                weights[.sleep] = (weights[.sleep] ?? 0) * 0.45
+                weights[.layDown] = (weights[.layDown] ?? 0) * 0.65
+            }
+
+            if needs.hunger < 45 {
+                weights[.eat, default: 0] += 45 - needs.hunger + 10
+            }
+
+            if needs.thirst < 45 {
+                weights[.drink, default: 0] += 45 - needs.thirst + 10
+            }
+        } else {
+            weights[.eat] = nil
+            weights[.drink] = nil
+        }
+
+        if lastAction == .sleep {
+            weights[.walk] = nil
+            weights[.standFromLaying] = nil
+            weights[.excited] = nil
+        }
+
+        if let lastAction, weights.count > 1 {
+            weights[lastAction] = nil
+        }
+
+        let weightedActions: [DobermanWeightedBehaviorAction] =
+            DobermanBehaviorAction.allCases.compactMap { action in
+                guard let weight = weights[action], weight > 0 else { return nil }
+                return DobermanWeightedBehaviorAction(action: action, weight: weight)
+            }
+
+        if !weightedActions.isEmpty {
+            return weightedActions
+        }
+
+        return [
+            DobermanWeightedBehaviorAction(action: .layLookAround, weight: 1),
+            DobermanWeightedBehaviorAction(action: .sleep, weight: 1)
+        ]
+    }
+
+    static func selectWeightedAction(
+        from actions: [DobermanWeightedBehaviorAction],
+        randomValue: Double
+    ) -> DobermanBehaviorAction? {
+        let totalWeight = actions.reduce(0) { $0 + max(0, $1.weight) }
+        guard totalWeight > 0 else { return nil }
+
+        var threshold = min(0.999_999, max(0, randomValue)) * totalWeight
+        for action in actions where action.weight > 0 {
+            if threshold < action.weight {
+                return action.action
+            }
+            threshold -= action.weight
+        }
+
+        return actions.last?.action
+    }
+
+    private var currentNeedsMode: DobermanNeedsElapsedMode {
+        animationModel.currentPose == .sleeping ? .sleeping : .awake
+    }
+
+    private func beginBehaviorGeneration() -> Int {
+        generation += 1
+        behaviorTask?.cancel()
+        behaviorTask = nil
+        return generation
+    }
+
+    private func runExpandedBehavior(
+        behaviorToken: Int,
+        animationToken: Int
+    ) async {
+        do {
+            try ensureCurrent(behaviorToken)
+            try await animationModel.wakeForExpandedBehavior(token: animationToken)
+            try ensureCurrent(behaviorToken)
+            try await runAmbientLoop(
+                behaviorToken: behaviorToken,
+                animationToken: animationToken
+            )
+        } catch {
+            clearTransientStateIfCurrent(behaviorToken)
+        }
+    }
+
+    private func startCareInteraction(
+        _ action: DobermanBehaviorAction,
+        completion: @escaping @MainActor () -> Void
+    ) {
+        let behaviorToken = beginBehaviorGeneration()
+        let animationToken = animationModel.beginControlledAnimation()
+        currentAction = action
+        isInteracting = true
+
+        behaviorTask = Task { @MainActor [weak self] in
+            await self?.runCareInteraction(
+                action,
+                behaviorToken: behaviorToken,
+                animationToken: animationToken,
+                completion: completion
+            )
+        }
+    }
+
+    private func runCareInteraction(
+        _ action: DobermanBehaviorAction,
+        behaviorToken: Int,
+        animationToken: Int,
+        completion: @escaping @MainActor () -> Void
+    ) async {
+        do {
+            try ensureCurrent(behaviorToken)
+            let destination: DobermanSceneDestination = action == .eat ? .foodBowl : .waterBowl
+            try await animationModel.normalizeForBehavior(to: .standing, token: animationToken)
+            try await animationModel.walkForBehavior(
+                toPercent: destination.percent,
+                token: animationToken
+            )
+            try ensureCurrent(behaviorToken)
+            try await execute(
+                action,
+                behaviorToken: behaviorToken,
+                animationToken: animationToken
+            )
+            try ensureCurrent(behaviorToken)
+            completion()
+            isInteracting = false
+            try await runAmbientLoop(
+                behaviorToken: behaviorToken,
+                animationToken: animationToken
+            )
+        } catch {
+            clearTransientStateIfCurrent(behaviorToken)
+        }
+    }
+
+    private func runAmbientLoop(
+        behaviorToken: Int,
+        animationToken: Int
+    ) async throws {
+        while true {
+            try ensureCurrent(behaviorToken)
+            needsModel.reconcile(mode: currentNeedsMode)
+
+            if !Defaults[.dobermanAutonomousBehaviorsEnabled] {
+                currentAction = .layLookAround
+                try await animationModel.normalizeForBehavior(to: .laying, token: animationToken)
+                try await animationModel.performBehaviorAnimation(.layLookAround, token: animationToken)
+                continue
+            }
+
+            let action = selectNextAction()
+            currentAction = action
+            lastAction = action
+
+            try await execute(
+                action,
+                behaviorToken: behaviorToken,
+                animationToken: animationToken
+            )
+        }
+    }
+
+    private func selectNextAction() -> DobermanBehaviorAction {
+        let actions = Self.weightedActions(
+            needs: needsModel.levels,
+            pose: animationModel.currentPose,
+            lastAction: lastAction
+        )
+
+        return Self.selectWeightedAction(
+            from: actions,
+            randomValue: randomDoubleProvider()
+        ) ?? .layLookAround
+    }
+
+    private func execute(
+        _ action: DobermanBehaviorAction,
+        behaviorToken: Int,
+        animationToken: Int
+    ) async throws {
+        try ensureCurrent(behaviorToken)
+
+        switch action {
+        case .walk:
+            guard Defaults[.dobermanRandomMovementEnabled] else {
+                try await animationModel.performBehaviorAnimation(.sitHold, token: animationToken)
+                return
+            }
+            try await animationModel.normalizeForBehavior(to: .standing, token: animationToken)
+            try ensureCurrent(behaviorToken)
+            try await animationModel.walkForBehavior(
+                toPercent: randomPercentProvider(),
+                token: animationToken
+            )
+        case .sit:
+            try await animationModel.normalizeForBehavior(to: .sitting, token: animationToken)
+        case .sitLookAround:
+            try await animationModel.normalizeForBehavior(to: .sitting, token: animationToken)
+            try ensureCurrent(behaviorToken)
+            try await animationModel.performBehaviorAnimation(
+                .sitLookAround,
+                token: animationToken
+            )
+        case .standFromSitting:
+            try await animationModel.normalizeForBehavior(to: .standing, token: animationToken)
+        case .layDown:
+            try await animationModel.normalizeForBehavior(to: .laying, token: animationToken)
+        case .layLookAround:
+            try await animationModel.normalizeForBehavior(to: .laying, token: animationToken)
+            try ensureCurrent(behaviorToken)
+            try await animationModel.performBehaviorAnimation(
+                .layLookAround,
+                token: animationToken
+            )
+        case .sleep:
+            try await animationModel.normalizeForBehavior(to: .laying, token: animationToken)
+            try ensureCurrent(behaviorToken)
+            try await animationModel.sleepForBehavior(
+                milliseconds: randomSleepMilliseconds(),
+                token: animationToken
+            )
+        case .standFromLaying:
+            try await animationModel.normalizeForBehavior(to: .standing, token: animationToken)
+        case .eat, .drink, .excited, .scratch:
+            try await executePlaceholder(
+                action,
+                behaviorToken: behaviorToken,
+                animationToken: animationToken
+            )
+        }
+    }
+
+    private func executePlaceholder(
+        _ action: DobermanBehaviorAction,
+        behaviorToken: Int,
+        animationToken: Int
+    ) async throws {
+        guard let mapping = DobermanPlaceholderBehaviorMappings.mapping(for: action) else {
+            return
+        }
+
+        try await animationModel.normalizeForBehavior(
+            to: mapping.requiredPose,
+            token: animationToken
+        )
+        try ensureCurrent(behaviorToken)
+
+        switch mapping.execution {
+        case .animations(let animations):
+            for animation in animations {
+                try ensureCurrent(behaviorToken)
+                try await animationModel.performBehaviorAnimation(animation, token: animationToken)
+            }
+        case .activeWalk:
+            try await animationModel.walkForBehavior(
+                toPercent: randomPercentProvider(),
+                token: animationToken
+            )
+        }
+    }
+
+    private func randomSleepMilliseconds() -> Int {
+        Int(round(6000 + randomDoubleProvider() * 8000))
+    }
+
+    private func ensureCurrent(_ token: Int) throws {
+        if Task.isCancelled || generation != token || !isExpanded {
+            throw CancellationError()
+        }
+    }
+
+    private func clearTransientStateIfCurrent(_ token: Int) {
+        guard generation == token else { return }
+        currentAction = nil
+        isInteracting = false
+    }
+}
+
+// Architectural names used by the scene layer; aliases preserve source compatibility.
+typealias DobermanSimulation = DobermanBehaviorController
+typealias DobermanAnimator = DobermanAnimationModel
 
 @MainActor
 final class DobermanAnimationModel: ObservableObject {
@@ -357,12 +1117,19 @@ final class DobermanAnimationModel: ObservableObject {
         expandedStageWidth = max(0, width)
     }
 
+    var currentPose: DobermanCanonicalPose {
+        renderState.pose
+    }
+
     func transitionToExpanded() {
-        generation += 1
-        let token = generation
-        animationTask?.cancel()
+        let token = beginControlledAnimation()
         animationTask = Task { @MainActor [weak self] in
-            await self?.runExpanded(token: token)
+            guard let self else { return }
+            do {
+                try await self.wakeForExpandedBehavior(token: token)
+            } catch {
+                return
+            }
         }
     }
 
@@ -379,6 +1146,182 @@ final class DobermanAnimationModel: ObservableObject {
         generation += 1
         animationTask?.cancel()
         animationTask = nil
+    }
+
+    @discardableResult
+    func beginControlledAnimation() -> Int {
+        generation += 1
+        animationTask?.cancel()
+        animationTask = nil
+        return generation
+    }
+
+    func isCurrentGeneration(_ token: Int) -> Bool {
+        generation == token
+    }
+
+    func wakeForExpandedBehavior(token: Int) async throws {
+        try ensureCurrent(token)
+        setMovementDuration(0)
+
+        switch renderState.pose {
+        case .sleeping, .laying:
+            try await playAnimation(.standFromLayTransition, phase: .waking, token: token)
+        case .sitting:
+            try await playAnimation(.standTransition, phase: .waking, token: token)
+        case .standing:
+            renderState = updatedState(
+                phase: .waking,
+                pose: .standing,
+                movementDuration: 0,
+                isWalking: false,
+                walkBobOffset: 0
+            )
+        case .walking:
+            renderState = updatedState(
+                phase: .waking,
+                pose: .standing,
+                movementDuration: 0,
+                isWalking: false,
+                walkBobOffset: 0
+            )
+        }
+    }
+
+    func normalizeForBehavior(
+        to pose: DobermanCanonicalPose,
+        token: Int
+    ) async throws {
+        try ensureCurrent(token)
+        setMovementDuration(0)
+
+        switch pose {
+        case .standing, .walking:
+            switch renderState.pose {
+            case .sleeping, .laying:
+                try await playAnimation(
+                    .standFromLayTransition,
+                    phase: .expandedTimeline,
+                    token: token
+                )
+            case .sitting:
+                try await playAnimation(
+                    .standTransition,
+                    phase: .expandedTimeline,
+                    token: token
+                )
+            case .standing:
+                renderState = updatedState(
+                    phase: .expandedTimeline,
+                    pose: .standing,
+                    movementDuration: 0,
+                    isWalking: false,
+                    walkBobOffset: 0
+                )
+            case .walking:
+                renderState = updatedState(
+                    phase: .expandedTimeline,
+                    pose: .standing,
+                    movementDuration: 0,
+                    isWalking: false,
+                    walkBobOffset: 0
+                )
+            }
+        case .sitting:
+            if renderState.pose != .sitting {
+                try await normalizeForBehavior(to: .standing, token: token)
+                try ensureCurrent(token)
+                try await playAnimation(.sitTransition, phase: .expandedTimeline, token: token)
+            }
+        case .laying:
+            switch renderState.pose {
+            case .sleeping:
+                let lay = DobermanAnimationDefinitions.animation(.lay)
+                renderState = updatedState(
+                    frame: lay.frames[0],
+                    phase: .expandedTimeline,
+                    pose: .laying,
+                    action: .lay,
+                    movementDuration: 0,
+                    isWalking: false,
+                    walkBobOffset: 0
+                )
+            case .laying:
+                renderState = updatedState(
+                    phase: .expandedTimeline,
+                    pose: .laying,
+                    movementDuration: 0,
+                    isWalking: false,
+                    walkBobOffset: 0
+                )
+            case .sitting:
+                try await playAnimation(.standTransition, phase: .expandedTimeline, token: token)
+                try ensureCurrent(token)
+                try await playAnimation(.layTransition, phase: .expandedTimeline, token: token)
+            case .standing, .walking:
+                try await playAnimation(.layTransition, phase: .expandedTimeline, token: token)
+            }
+        case .sleeping:
+            try await normalizeForBehavior(to: .laying, token: token)
+        }
+    }
+
+    func performBehaviorAnimation(
+        _ animationName: DobermanAnimationName,
+        token: Int
+    ) async throws {
+        let animation = DobermanAnimationDefinitions.animation(animationName)
+
+        if animation.loop {
+            try await playLoop(
+                animationName,
+                phase: .expandedTimeline,
+                holdMilliseconds: timingScale == 0
+                    ? animation.frameDurationMilliseconds
+                    : animation.holdMilliseconds
+                    ?? animation.frames.count * animation.frameDurationMilliseconds,
+                token: token
+            )
+            return
+        }
+
+        if let holdMilliseconds = animation.holdMilliseconds {
+            try await holdAnimation(
+                animationName,
+                phase: .expandedTimeline,
+                holdMilliseconds: timingScale == 0
+                    ? animation.frameDurationMilliseconds
+                    : holdMilliseconds,
+                token: token
+            )
+            return
+        }
+
+        try await playAnimation(animationName, phase: .expandedTimeline, token: token)
+    }
+
+    func walkForBehavior(toPercent percent: CGFloat, token: Int) async throws {
+        try await playMovementStep(
+            DobermanTimelineStep(action: .walk, moveTo: .percent(percent)),
+            target: .percent(percent),
+            token: token
+        )
+        try ensureCurrent(token)
+        renderState = updatedState(
+            pose: .standing,
+            movementDuration: 0,
+            isWalking: false,
+            walkBobOffset: 0
+        )
+    }
+
+    func sleepForBehavior(milliseconds: Int, token: Int) async throws {
+        try await playLoop(
+            .sleepLoop,
+            phase: .expandedTimeline,
+            holdMilliseconds: milliseconds,
+            token: token
+        )
     }
 
     private func startSleepLoop() {
@@ -497,7 +1440,10 @@ final class DobermanAnimationModel: ObservableObject {
             spriteWidth: spriteWidth,
             currentX: renderState.x
         )
-        let movementMilliseconds = step.durationMilliseconds
+        let facingDirection: DobermanFacingDirection = targetX < renderState.x ? .left : .right
+        let movementMilliseconds = timingScale == 0
+            ? animation.frameDurationMilliseconds
+            : step.durationMilliseconds
             ?? DobermanAnimationDefinitions.movementDurationMilliseconds(
                 for: targetX - renderState.x
             )
@@ -509,7 +1455,8 @@ final class DobermanAnimationModel: ObservableObject {
             pose: .walking,
             action: step.action,
             isWalking: true,
-            walkBobOffset: 0
+            walkBobOffset: 0,
+            facingDirection: facingDirection
         )
 
         try await sleep(milliseconds: DobermanAnimationDefinitions.movementStartDelayMilliseconds)
@@ -690,7 +1637,8 @@ final class DobermanAnimationModel: ObservableObject {
         x: CGFloat? = nil,
         movementDuration: TimeInterval? = nil,
         isWalking: Bool? = nil,
-        walkBobOffset: CGFloat? = nil
+        walkBobOffset: CGFloat? = nil,
+        facingDirection: DobermanFacingDirection? = nil
     ) -> DobermanRenderState {
         DobermanRenderState(
             frame: frame ?? renderState.frame,
@@ -700,45 +1648,130 @@ final class DobermanAnimationModel: ObservableObject {
             x: x ?? renderState.x,
             movementDuration: movementDuration ?? renderState.movementDuration,
             isWalking: isWalking ?? renderState.isWalking,
-            walkBobOffset: walkBobOffset ?? renderState.walkBobOffset
+            walkBobOffset: walkBobOffset ?? renderState.walkBobOffset,
+            facingDirection: facingDirection ?? renderState.facingDirection
         )
     }
 }
 
 struct DobermanExpandedActivityView: View {
     @ObservedObject var model: DobermanAnimationModel
+    @ObservedObject var needsModel: DobermanNeedsModel
+    @ObservedObject var behaviorController: DobermanBehaviorController
+    @Default(.dobermanShowStatusPanel) private var showStatusPanel
+
+    var body: some View {
+        HStack(spacing: 12) {
+            DobermanSceneView(model: model)
+                .layoutPriority(1)
+
+            if showStatusPanel {
+                DobermanNeedsControlsView(
+                    needsModel: needsModel,
+                    behaviorController: behaviorController
+                )
+                .frame(width: 154)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 10)
+        .padding(.bottom, dobermanExpandedBottomMargin)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityLabel("Doberman")
+    }
+}
+
+struct DobermanSceneView: View {
+    @ObservedObject var model: DobermanAnimationModel
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    @Default(.dobermanReduceMotion) private var activityReduceMotion
 
     var body: some View {
         GeometryReader { proxy in
             let scale = DobermanAnimationDefinitions.defaultScale
+            let spriteWidth = DobermanAnimationDefinitions.frameWidth * scale
             let spriteHeight = DobermanAnimationDefinitions.frameHeight * scale
-            let y = max(0, proxy.size.height - spriteHeight - 10)
+            let groundY = max(0, proxy.size.height - spriteHeight - 12)
+            let reducedMotion = systemReduceMotion || activityReduceMotion
 
             ZStack(alignment: .topLeading) {
-                DobermanSpriteSheetView(
-                    frame: model.renderState.frame,
-                    scale: scale
-                )
-                .offset(
-                    x: model.renderState.x,
-                    y: y + model.renderState.walkBobOffset
-                )
-                .animation(
-                    .linear(duration: model.renderState.movementDuration),
-                    value: model.renderState.x
-                )
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(LinearGradient(
+                        colors: [.brown.opacity(0.16), .black.opacity(0.3)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ))
+
+                Capsule()
+                    .fill(.black.opacity(0.3))
+                    .frame(width: spriteWidth * 0.62, height: 8)
+                    .offset(x: model.renderState.x + spriteWidth * 0.19, y: groundY + spriteHeight - 7)
+                    .animation(.linear(duration: reducedMotion ? 0.01 : model.renderState.movementDuration), value: model.renderState.x)
+
+                DobermanSpriteSheetView(frame: model.renderState.frame, scale: scale)
+                    .scaleEffect(x: model.renderState.facingDirection.scaleX, y: 1, anchor: .center)
+                    .offset(x: model.renderState.x, y: groundY + (reducedMotion ? 0 : model.renderState.walkBobOffset))
+                    .animation(.linear(duration: reducedMotion ? 0.12 : model.renderState.movementDuration), value: model.renderState.x)
+                    .accessibilityLabel("Doberman in the scene")
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .clipped()
-            .onAppear {
-                model.updateExpandedStageWidth(proxy.size.width)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .onAppear { model.updateExpandedStageWidth(proxy.size.width) }
+            .onChange(of: proxy.size.width) { _, width in model.updateExpandedStageWidth(width) }
+        }
+    }
+}
+
+struct DobermanNeedsControlsView: View {
+    @ObservedObject var needsModel: DobermanNeedsModel
+    @ObservedObject var behaviorController: DobermanBehaviorController
+
+    var body: some View {
+        VStack(spacing: 9) {
+            if needsModel.isEnabled {
+                DobermanNeedMeter(title: "Hunger", icon: "fork.knife", value: needsModel.hunger)
+                DobermanNeedMeter(title: "Thirst", icon: "drop.fill", value: needsModel.thirst)
             }
-            .onChange(of: proxy.size.width) { _, width in
-                model.updateExpandedStageWidth(width)
+            DobermanNeedMeter(title: "Energy", icon: "bolt.fill", value: needsModel.energy)
+
+            HStack(spacing: 8) {
+                careButton("Feed", icon: "fork.knife") { behaviorController.feed() }
+                careButton("Give Water", icon: "drop.fill") { behaviorController.giveWater() }
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .accessibilityLabel("Doberman")
+        .font(.caption2)
+        .padding(12)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(.white.opacity(0.14)))
+    }
+
+    private func careButton(_ title: String, icon: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) { Image(systemName: icon).frame(width: 30, height: 26) }
+            .buttonStyle(.bordered)
+            .disabled(behaviorController.isInteracting || !needsModel.isEnabled)
+            .help(title)
+            .accessibilityLabel(title)
+    }
+}
+
+struct DobermanNeedMeter: View {
+    let title: String
+    let icon: String
+    let value: Double
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 5) {
+                Image(systemName: icon).frame(width: 12)
+                Text(title)
+                Spacer()
+                if value < 25 { Text("Low").foregroundStyle(.orange) }
+            }
+            ProgressView(value: value, total: 100)
+                .progressViewStyle(.linear)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        .accessibilityValue("\(Int(value.rounded())) percent\(value < 25 ? ", low" : "")")
     }
 }
 
@@ -759,6 +1792,7 @@ struct DobermanLivePresentationView: View {
                 frame: model.renderState.frame,
                 scale: scale
             )
+            .scaleEffect(x: model.renderState.facingDirection.scaleX, y: 1, anchor: .center)
             .frame(width: proxy.size.width, height: proxy.size.height)
             .accessibilityHidden(true)
         }
@@ -793,5 +1827,42 @@ struct DobermanSpriteSheetView: View {
                 alignment: .topLeading
             )
             .clipped()
+    }
+}
+
+struct DobermanSettingsView: View {
+    @ObservedObject var needsModel: DobermanNeedsModel
+    @Default(.dobermanVirtualPetNeedsEnabled) private var needsEnabled
+
+    var body: some View {
+        Form {
+            Section {
+                Defaults.Toggle(key: .dobermanVirtualPetNeedsEnabled) {
+                    Text("Enable needs system")
+                }
+
+                if needsEnabled {
+                    LabeledContent("Hunger", value: "\(Int(needsModel.hunger.rounded()))%")
+                    LabeledContent("Thirst", value: "\(Int(needsModel.thirst.rounded()))%")
+                    LabeledContent("Energy", value: "\(Int(needsModel.energy.rounded()))%")
+                }
+            }
+
+            Section("Behavior") {
+                Defaults.Toggle(key: .dobermanAutonomousBehaviorsEnabled) {
+                    Text("Enable autonomous behaviors")
+                }
+                Defaults.Toggle(key: .dobermanRandomMovementEnabled) {
+                    Text("Enable random movement")
+                }
+                Defaults.Toggle(key: .dobermanShowStatusPanel) {
+                    Text("Show status panel")
+                }
+                Defaults.Toggle(key: .dobermanReduceMotion) {
+                    Text("Reduce motion")
+                }
+            }
+        }
+        .accessibilityLabel("Doberman settings")
     }
 }
