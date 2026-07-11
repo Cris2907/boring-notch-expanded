@@ -153,6 +153,10 @@ enum DobermanBehaviorState: Equatable, Sendable {
     case idle, walking, sleeping, eating, drinking, playing, lookingAround, transitioning
 }
 
+enum DobermanFoodPlateState: Equatable, Sendable {
+    case hidden, full, empty
+}
+
 enum DobermanInterruptibility: Equatable, Sendable {
     case immediate, afterFrame, afterLoop, never
 }
@@ -699,6 +703,7 @@ final class DobermanBehaviorController: ObservableObject {
     @Published private(set) var currentAction: DobermanBehaviorAction?
     @Published private(set) var isExpanded = false
     @Published private(set) var isInteracting = false
+    @Published private(set) var foodPlateState: DobermanFoodPlateState = .hidden
 
     private(set) var generation = 0
 
@@ -746,12 +751,14 @@ final class DobermanBehaviorController: ObservableObject {
         _ = beginBehaviorGeneration()
         currentAction = nil
         isInteracting = false
+        foodPlateState = .hidden
         needsModel.reconcile(mode: currentNeedsMode)
         animationModel.transitionToClosed()
     }
 
     func feed() {
         guard isExpanded, needsModel.isEnabled else { return }
+        foodPlateState = .full
         startCareInteraction(.eat) { [weak self] in
             self?.needsModel.feed()
         }
@@ -939,11 +946,18 @@ final class DobermanBehaviorController: ObservableObject {
                 token: animationToken
             )
             try ensureCurrent(behaviorToken)
-            try await execute(
-                action,
-                behaviorToken: behaviorToken,
-                animationToken: animationToken
-            )
+            if action == .eat {
+                try await runEatingInteraction(
+                    behaviorToken: behaviorToken,
+                    animationToken: animationToken
+                )
+            } else {
+                try await execute(
+                    action,
+                    behaviorToken: behaviorToken,
+                    animationToken: animationToken
+                )
+            }
             try ensureCurrent(behaviorToken)
             completion()
             isInteracting = false
@@ -954,6 +968,25 @@ final class DobermanBehaviorController: ObservableObject {
         } catch {
             clearTransientStateIfCurrent(behaviorToken)
         }
+    }
+
+    private func runEatingInteraction(
+        behaviorToken: Int,
+        animationToken: Int
+    ) async throws {
+        try await animationModel.normalizeForBehavior(to: .sitting, token: animationToken)
+        try ensureCurrent(behaviorToken)
+
+        let emptyPlateTask = Task { @MainActor [weak self] in
+            try await Task.sleep(for: .seconds(5))
+            guard let self else { return }
+            try self.ensureCurrent(behaviorToken)
+            self.foodPlateState = .empty
+        }
+
+        defer { emptyPlateTask.cancel() }
+        try await animationModel.performBehaviorAnimation(.sitHold, token: animationToken)
+        try await emptyPlateTask.value
     }
 
     private func runAmbientLoop(
@@ -1697,7 +1730,10 @@ struct DobermanExpandedActivityView: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            DobermanSceneView(model: model)
+            DobermanSceneView(
+                model: model,
+                foodPlateState: behaviorController.foodPlateState
+            )
                 .layoutPriority(1)
 
             if showStatusPanel {
@@ -1718,6 +1754,7 @@ struct DobermanExpandedActivityView: View {
 
 struct DobermanSceneView: View {
     @ObservedObject var model: DobermanAnimationModel
+    let foodPlateState: DobermanFoodPlateState
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     @Default(.dobermanReduceMotion) private var activityReduceMotion
     @Default(.dobermanBackground) private var selectedBackground
@@ -1757,6 +1794,26 @@ struct DobermanSceneView: View {
                     usesNearestNeighbor: true
                 )
 
+                if foodPlateState != .hidden {
+                    Image(foodPlateState == .full ? "food-plate-full-day" : "food-plate-empty-day")
+                        .resizable()
+                        .interpolation(.none)
+                        .antialiased(false)
+                        .scaledToFit()
+                        .frame(width: 58, height: 34)
+                        .offset(
+                            x: max(12, proxy.size.width / 2 - 76),
+                            y: max(0, proxy.size.height - 45)
+                        )
+                        .transition(
+                            .asymmetric(
+                                insertion: .move(edge: .trailing).combined(with: .opacity),
+                                removal: .opacity
+                            )
+                        )
+                        .accessibilityLabel(foodPlateState == .full ? "Full food plate" : "Empty food plate")
+                }
+
                 DobermanGroundShadowLayer(
                     dogX: model.renderState.x,
                     dogBottomY: groundY - 7 + spriteHeight,
@@ -1777,6 +1834,7 @@ struct DobermanSceneView: View {
                 .linear(duration: reducedMotion ? 0.01 : model.renderState.movementDuration),
                 value: model.worldTravel
             )
+            .animation(.easeOut(duration: reducedMotion ? 0.01 : 1), value: foodPlateState)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -1855,9 +1913,9 @@ struct DobermanParallaxLayer: View, Animatable {
     var body: some View {
         GeometryReader { proxy in
             let tileWidth = max(1, proxy.size.height * 300 / 70)
-            let wrappedTravel = (travel * depth).truncatingRemainder(dividingBy: tileWidth)
+            let wrappedTravel = Self.wrappedOffset(for: travel * depth, tileWidth: tileWidth)
             let firstX = -wrappedTravel - tileWidth
-            let tileCount = Int(ceil(proxy.size.width / tileWidth)) + 3
+            let tileCount = Self.tileCount(viewportWidth: proxy.size.width, tileWidth: tileWidth)
 
             Group {
                 if usesNearestNeighbor {
@@ -1893,6 +1951,16 @@ struct DobermanParallaxLayer: View, Animatable {
         }
         .accessibilityHidden(true)
         .allowsHitTesting(false)
+    }
+
+    static func tileCount(viewportWidth: CGFloat, tileWidth: CGFloat) -> Int {
+        max(3, Int(ceil(max(0, viewportWidth) / max(1, tileWidth))) + 2)
+    }
+
+    static func wrappedOffset(for travel: CGFloat, tileWidth: CGFloat) -> CGFloat {
+        let width = max(1, tileWidth)
+        let remainder = travel.truncatingRemainder(dividingBy: width)
+        return remainder >= 0 ? remainder : remainder + width
     }
 }
 

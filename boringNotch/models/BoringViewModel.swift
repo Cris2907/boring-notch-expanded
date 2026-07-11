@@ -190,6 +190,10 @@ class BoringViewModel: NSObject, ObservableObject {
     }
 
     func open() {
+        // Repeated taps on an already-open notch must not discard a view's
+        // preferred expanded height by resetting it to the default size.
+        guard notchState != .open else { return }
+
         self.notchSize = openNotchSize
         self.notchState = .open
         

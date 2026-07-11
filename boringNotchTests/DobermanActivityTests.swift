@@ -155,6 +155,13 @@ final class DobermanActivityTests: XCTestCase {
         XCTAssertEqual(DobermanAnimationDefinitions.worldTravelMultiplier, 2.046)
     }
 
+    func testParallaxAlwaysRendersLeftCenterAndRightTiles() {
+        XCTAssertEqual(DobermanParallaxLayer.tileCount(viewportWidth: 100, tileWidth: 500), 3)
+        XCTAssertEqual(DobermanParallaxLayer.tileCount(viewportWidth: 1_500, tileWidth: 500), 5)
+        XCTAssertEqual(DobermanParallaxLayer.wrappedOffset(for: 12_345, tileWidth: 500), 345)
+        XCTAssertEqual(DobermanParallaxLayer.wrappedOffset(for: -25, tileWidth: 500), 475)
+    }
+
     func testCloseNormalizationUsesOnlyJSXDerivedTransitions() {
         XCTAssertEqual(
             DobermanAnimationDefinitions.closeSequence(from: .sleeping),

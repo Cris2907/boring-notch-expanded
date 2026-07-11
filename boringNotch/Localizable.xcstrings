@@ -8227,6 +8227,9 @@
         }
       }
     },
+    "Empty food plate" : {
+
+    },
     "Enable autonomous behaviors" : {
 
     },
@@ -9750,6 +9753,9 @@
 
     },
     "Focuses before long break" : {
+
+    },
+    "Full food plate" : {
 
     },
     "Full screen behavior" : {
