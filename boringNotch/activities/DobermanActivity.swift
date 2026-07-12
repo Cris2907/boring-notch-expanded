@@ -143,6 +143,15 @@ enum DobermanPresentationPhase: Equatable, Sendable {
     case closing
 }
 
+enum DobermanActivityPresentationPhase: Equatable, Sendable {
+    case closedSleeping
+    case opening
+    case waking
+    case orienting
+    case active
+    case closing
+}
+
 enum DobermanMovementTarget: Equatable, Sendable {
     case start
     case center
@@ -268,6 +277,8 @@ struct DobermanTimelineStep: Equatable, Sendable {
 }
 
 enum DobermanAnimationDefinitions {
+    // Sprite frame IDs use a 1-based "row.column" address in the pet sprite sheet.
+    // DobermanSpriteSheetView converts those IDs into crop offsets when rendering.
     static let frameWidth: CGFloat = 40
     static let frameHeight: CGFloat = 30
     static let sheetColumns = 4
@@ -284,9 +295,11 @@ enum DobermanAnimationDefinitions {
 
     static let defaultFrame = frame("1.1")
 
+    // Shared transition clips can be reused directly or reversed for the matching stand-up motion.
     private static let sitTransitionFrames = frames("3.1")
     private static let layTransitionFrames = frames("3.4", "4.1", "4.2")
 
+    // Default expanded-scene loop. Each step references an animation defined in animation(_:).
     static let defaultTimeline: [DobermanTimelineStep] = [
         DobermanTimelineStep(action: .walk, moveTo: .percent(25)),
         DobermanTimelineStep(action: .layTransition),
@@ -311,50 +324,63 @@ enum DobermanAnimationDefinitions {
         frameIDs.map(frame)
     }
 
+    // Add a new animation by adding a case to DobermanAnimationName, mapping its frames here,
+    // then updating pose(after:) and whichever timeline or behavior should play it.
     static func animation(_ name: DobermanAnimationName) -> DobermanAnimationDefinition {
         switch name {
         case .walk:
+            // Rows 1-2: looping walk cycle used while the dog moves through the scene.
             return DobermanAnimationDefinition(
                 frames: frames("1.1", "1.2", "1.3", "1.4", "2.1", "2.2", "2.3", "2.4"),
                 loop: true
             )
         case .sitTransition:
+            // Row 3, column 1: stand-to-sit transition.
             return DobermanAnimationDefinition(frames: sitTransitionFrames)
         case .sitHold:
+            // Row 3, column 2: sitting idle pose held for a longer pause.
             return DobermanAnimationDefinition(
                 frames: frames("3.2"),
                 holdMilliseconds: sitHoldMilliseconds
             )
         case .sitLookAround:
+            // Row 3, column 3: sitting look-around pose.
             return DobermanAnimationDefinition(
                 frames: frames("3.3"),
                 holdMilliseconds: sitHoldMilliseconds
             )
         case .standTransition:
+            // Reverse of sitTransition: sit-to-stand transition.
             return DobermanAnimationDefinition(frames: Array(sitTransitionFrames.reversed()))
         case .layTransition:
+            // Row 3, column 4 through row 4, column 2: stand-to-lay transition.
             return DobermanAnimationDefinition(frames: layTransitionFrames)
         case .layHold:
+            // Row 4, column 2: laying idle pose held for a longer pause.
             return DobermanAnimationDefinition(
                 frames: frames("4.2"),
                 holdMilliseconds: sitHoldMilliseconds
             )
         case .layLookAround:
+            // Row 4, column 3: laying look-around pose.
             return DobermanAnimationDefinition(
                 frames: frames("4.3"),
                 holdMilliseconds: sitHoldMilliseconds
             )
         case .lay:
+            // Row 4, column 4: settled laying pose used before sleep.
             return DobermanAnimationDefinition(
                 frames: frames("4.4"),
                 holdMilliseconds: sitHoldMilliseconds
             )
         case .sleepLoop:
+            // Rows 5-6: looping sleep/breathing cycle.
             return DobermanAnimationDefinition(
                 frames: frames("5.1", "5.2", "5.3", "5.4", "6.1", "6.2", "6.3", "6.4"),
                 loop: true
             )
         case .standFromLayTransition:
+            // Reverse of layTransition: lay-to-stand transition.
             return DobermanAnimationDefinition(frames: Array(layTransitionFrames.reversed()))
         }
     }
@@ -710,6 +736,7 @@ enum DobermanPlaceholderBehaviorMappings {
 final class DobermanBehaviorController: ObservableObject {
     @Published private(set) var currentAction: DobermanBehaviorAction?
     @Published private(set) var isExpanded = false
+    @Published private(set) var presentationPhase: DobermanActivityPresentationPhase = .closedSleeping
     @Published private(set) var isInteracting = false
     @Published private(set) var foodPlateState: DobermanFoodPlateState = .hidden
     @Published private(set) var foodPlateSide: DobermanFoodPlateSide = .left
@@ -748,6 +775,7 @@ final class DobermanBehaviorController: ObservableObject {
     func transitionToExpanded() {
         guard !isExpanded else { return }
         isExpanded = true
+        presentationPhase = .opening
         needsModel.reconcile(mode: .closedSleeping)
 
         let behaviorToken = beginBehaviorGeneration()
@@ -763,6 +791,7 @@ final class DobermanBehaviorController: ObservableObject {
     func transitionToClosed() {
         guard isExpanded || behaviorTask != nil else { return }
         isExpanded = false
+        presentationPhase = .closing
         _ = beginBehaviorGeneration()
         currentAction = nil
         isInteracting = false
@@ -772,6 +801,7 @@ final class DobermanBehaviorController: ObservableObject {
         isWaterPlateInScene = false
         needsModel.reconcile(mode: currentNeedsMode)
         animationModel.transitionToClosed()
+        presentationPhase = .closedSleeping
     }
 
     func feed() {
@@ -938,8 +968,23 @@ final class DobermanBehaviorController: ObservableObject {
     ) async {
         do {
             try ensureCurrent(behaviorToken)
+            // TODO: Replace this sleeping hold with a subtle ear-twitch or head-lift animation.
+            try await animationModel.holdForBehavior(
+                milliseconds: 200,
+                token: animationToken
+            )
+            try ensureCurrent(behaviorToken)
+            presentationPhase = .waking
             try await animationModel.wakeForExpandedBehavior(token: animationToken)
             try ensureCurrent(behaviorToken)
+            presentationPhase = .orienting
+            // TODO: Replace this standing hold with a dedicated opening look-around animation.
+            try await animationModel.holdForBehavior(
+                milliseconds: 350,
+                token: animationToken
+            )
+            try ensureCurrent(behaviorToken)
+            presentationPhase = .active
             try await runAmbientLoop(
                 behaviorToken: behaviorToken,
                 animationToken: animationToken
@@ -1456,6 +1501,13 @@ final class DobermanAnimationModel: ObservableObject {
         )
     }
 
+    func holdForBehavior(milliseconds: Int, token: Int) async throws {
+        try ensureCurrent(token)
+        setMovementDuration(0)
+        try await sleep(milliseconds: milliseconds)
+        try ensureCurrent(token)
+    }
+
     private func startSleepLoop() {
         generation += 1
         let token = generation
@@ -1811,6 +1863,7 @@ struct DobermanExpandedActivityView: View {
         HStack(spacing: 12) {
             DobermanSceneView(
                 model: model,
+                presentationPhase: behaviorController.presentationPhase,
                 foodPlateState: behaviorController.foodPlateState,
                 foodPlateSide: behaviorController.foodPlateSide,
                 isFoodPlateInScene: behaviorController.isFoodPlateInScene,
@@ -1844,6 +1897,7 @@ struct DobermanSceneView: View {
     static let grassDepth: CGFloat = 1.38
 
     @ObservedObject var model: DobermanAnimationModel
+    let presentationPhase: DobermanActivityPresentationPhase
     let foodPlateState: DobermanFoodPlateState
     let foodPlateSide: DobermanFoodPlateSide
     let isFoodPlateInScene: Bool
@@ -1870,27 +1924,31 @@ struct DobermanSceneView: View {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(.black)
 
-                DobermanParallaxLayer(
-                    imageName: selectedTime.assetName(for: "sun", background: selectedBackground),
-                    travel: 0,
-                    depth: 0.4
-                )
-                DobermanScrollingCloudLayer(
-                    travel: model.worldTravel,
-                    isPaused: reducedMotion,
-                    imageName: selectedTime.assetName(for: "clouds", background: selectedBackground)
-                )
-                DobermanParallaxLayer(
-                    imageName: selectedTime.assetName(for: "city", background: selectedBackground),
-                    travel: model.worldTravel,
-                    depth: 0.8
-                )
-                DobermanParallaxLayer(
-                    imageName: selectedTime.assetName(for: "grass", background: selectedBackground),
-                    travel: model.worldTravel,
-                    depth: Self.grassDepth,
-                    usesNearestNeighbor: true
-                )
+                Group {
+                    DobermanParallaxLayer(
+                        imageName: selectedTime.assetName(for: "sun", background: selectedBackground),
+                        travel: 0,
+                        depth: 0.4
+                    )
+                    DobermanScrollingCloudLayer(
+                        travel: model.worldTravel,
+                        isPaused: reducedMotion,
+                        imageName: selectedTime.assetName(for: "clouds", background: selectedBackground)
+                    )
+                    DobermanParallaxLayer(
+                        imageName: selectedTime.assetName(for: "city", background: selectedBackground),
+                        travel: model.worldTravel,
+                        depth: 0.8
+                    )
+                    DobermanParallaxLayer(
+                        imageName: selectedTime.assetName(for: "grass", background: selectedBackground),
+                        travel: model.worldTravel,
+                        depth: Self.grassDepth,
+                        usesNearestNeighbor: true
+                    )
+                }
+                .opacity(presentationPhase == .opening ? 0 : 1)
+                .animation(.easeOut(duration: 0.25), value: presentationPhase)
 
                 if foodPlateState != .hidden {
                     let grassTravel = (model.worldTravel - foodPlateSpawnTravel) * Self.grassDepth
@@ -2143,12 +2201,19 @@ struct DobermanNeedsControlsView: View {
         .padding(12)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(.white.opacity(0.14)))
+        .opacity(behaviorController.presentationPhase == .active ? 1 : 0)
+        .animation(.easeOut(duration: 0.2), value: behaviorController.presentationPhase)
+        .allowsHitTesting(behaviorController.presentationPhase == .active)
     }
 
     private func careButton(_ title: String, icon: String, action: @escaping () -> Void) -> some View {
         Button(action: action) { Image(systemName: icon).frame(width: 30, height: 26) }
             .buttonStyle(.bordered)
-            .disabled(behaviorController.isInteracting || !needsModel.isEnabled)
+            .disabled(
+                behaviorController.presentationPhase != .active
+                    || behaviorController.isInteracting
+                    || !needsModel.isEnabled
+            )
             .help(title)
             .accessibilityLabel(title)
     }
