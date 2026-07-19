@@ -7,9 +7,258 @@ extension ActivityID {
     static let doberman = ActivityID("builtin.doberman")
 }
 
-private let dobermanSceneContentHeight: CGFloat = 220
-private let dobermanOpenNotchChromeReserve: CGFloat = 40
-private let dobermanExpandedBottomMargin: CGFloat = 20
+private let dobermanSceneContentHeight: CGFloat = 240
+private let dobermanOpenNotchChromeReserve: CGFloat = 70
+private let dobermanOpenNotchHeightPadding: CGFloat = 26
+private let dobermanExpandedBottomMargin: CGFloat = 40
+
+struct DobermanSceneLayerDefinition: Identifiable, Equatable, Sendable {
+    enum Content: Equatable, Sendable {
+        case fixed(imageName: String, fillsViewport: Bool)
+        case tiled(imageNames: [String], seedSalt: UInt64)
+        case drifting(imageName: String, pointsPerSecond: CGFloat)
+    }
+
+    let id: String
+    let content: Content
+    let worldMovementRatio: CGFloat
+}
+
+indirect enum DobermanSceneLayerNode: Equatable, Sendable {
+    case layer(DobermanSceneLayerDefinition)
+    case group(id: String, children: [DobermanSceneLayerNode])
+
+    var flattenedLayers: [DobermanSceneLayerDefinition] {
+        switch self {
+        case .layer(let layer):
+            [layer]
+        case .group(_, let children):
+            children.flatMap(\.flattenedLayers)
+        }
+    }
+}
+
+struct DobermanSceneDefinition: Equatable, Sendable {
+    static let sourceSize = CGSize(width: 300, height: 120)
+    static let displayScale: CGFloat = 2
+    static let displaySize = CGSize(
+        width: sourceSize.width * displayScale,
+        height: sourceSize.height * displayScale
+    )
+
+    let id: String
+    let layers: [DobermanSceneLayerNode]
+
+    var flattenedLayers: [DobermanSceneLayerDefinition] {
+        layers.flatMap(\.flattenedLayers)
+    }
+
+    static let defaultNoon = DobermanSceneDefinition(
+        id: "default-noon",
+        layers: [
+            .layer(
+                DobermanSceneLayerDefinition(
+                    id: "1-sky",
+                    content: .fixed(
+                        imageName: "doberman-default-noon-sky",
+                        fillsViewport: true
+                    ),
+                    worldMovementRatio: 0
+                )
+            ),
+            .layer(
+                DobermanSceneLayerDefinition(
+                    id: "2-sun",
+                    content: .fixed(
+                        imageName: "doberman-default-noon-sun",
+                        fillsViewport: false
+                    ),
+                    worldMovementRatio: 0
+                )
+            ),
+            .group(
+                id: "3-clouds",
+                children: [
+                    .layer(
+                        DobermanSceneLayerDefinition(
+                            id: "3-clouds-far",
+                            content: .drifting(
+                                imageName: "doberman-default-noon-clouds-far",
+                                pointsPerSecond: 4
+                            ),
+                            worldMovementRatio: 0.08
+                        )
+                    ),
+                    .layer(
+                        DobermanSceneLayerDefinition(
+                            id: "3-clouds-near",
+                            content: .drifting(
+                                imageName: "doberman-default-noon-clouds-near",
+                                pointsPerSecond: 8
+                            ),
+                            worldMovementRatio: 0.14
+                        )
+                    )
+                ]
+            ),
+            .group(
+                id: "4-background",
+                children: [
+                    .layer(
+                        DobermanSceneLayerDefinition(
+                            id: "4-background-strip",
+                            content: .tiled(
+                                imageNames: [
+                                    "doberman-default-noon-background-city",
+                                    "doberman-default-noon-background-mountains",
+                                    "doberman-default-noon-background-rocky-mountains"
+                                ],
+                                seedSalt: 0xBACC_600D
+                            ),
+                            worldMovementRatio: 0.45
+                        )
+                    )
+                ]
+            ),
+            .layer(
+                DobermanSceneLayerDefinition(
+                    id: "5-trees",
+                    content: .tiled(
+                        imageNames: ["doberman-default-noon-trees"],
+                        seedSalt: 0x7EEE_5000
+                    ),
+                    worldMovementRatio: 0.72
+                )
+            ),
+            .group(
+                id: "6-foreground",
+                children: [
+                    .layer(
+                        DobermanSceneLayerDefinition(
+                            id: "6-foreground-strip",
+                            content: .tiled(
+                                imageNames: [
+                                    "doberman-default-noon-foreground-1",
+                                    "doberman-default-noon-foreground-2",
+                                    "doberman-default-noon-foreground-3"
+                                ],
+                                seedSalt: 0xF0AE_600D
+                            ),
+                            worldMovementRatio: 1
+                        )
+                    )
+                ]
+            )
+        ]
+    )
+}
+
+struct DobermanSceneSnapshot: Codable, Equatable, Sendable {
+    static let currentVersion = 1
+
+    let version: Int
+    let seed: UInt64
+    let worldTravel: Double
+    let cloudEpoch: Date
+    let closedAt: Date
+    let dogX: Double
+    let dogFacesLeft: Bool
+}
+
+@MainActor
+final class DobermanSceneSessionController: ObservableObject {
+    static let sceneryPersistenceDuration: TimeInterval = 5 * 60
+    static let dogPositionPersistenceDuration: TimeInterval = 30
+    static let storageKey = "dobermanSceneSnapshot.v1"
+
+    @Published private(set) var seed: UInt64
+    @Published private(set) var cloudEpoch: Date
+    @Published private(set) var activeTime: DobermanSceneTime = .noon
+
+    private let defaults: UserDefaults
+    private let now: () -> Date
+    private let seedProvider: () -> UInt64
+
+    init(
+        defaults: UserDefaults = .standard,
+        now: @escaping () -> Date = Date.init,
+        seedProvider: @escaping () -> UInt64 = { UInt64.random(in: .min ... .max) }
+    ) {
+        self.defaults = defaults
+        self.now = now
+        self.seedProvider = seedProvider
+        let date = now()
+        seed = seedProvider()
+        cloudEpoch = date
+    }
+
+    func beginPresentation(
+        model: DobermanAnimationModel,
+        selectedTime: DobermanSceneTime,
+        usesDynamicTime: Bool
+    ) {
+        let date = now()
+        activeTime = usesDynamicTime ? .resolved(for: date) : selectedTime
+
+        guard let snapshot = storedSnapshot(),
+              snapshot.version == DobermanSceneSnapshot.currentVersion
+        else {
+            startFreshScene(model: model, at: date)
+            return
+        }
+
+        let elapsed = date.timeIntervalSince(snapshot.closedAt)
+        guard elapsed >= 0, elapsed <= Self.sceneryPersistenceDuration else {
+            startFreshScene(model: model, at: date)
+            return
+        }
+
+        seed = snapshot.seed
+        cloudEpoch = snapshot.cloudEpoch
+        let restoresDog = elapsed <= Self.dogPositionPersistenceDuration
+        model.restoreScenePosition(
+            worldTravel: CGFloat(snapshot.worldTravel),
+            dogX: restoresDog ? CGFloat(snapshot.dogX) : nil,
+            facingDirection: restoresDog
+                ? (snapshot.dogFacesLeft ? .left : .right)
+                : nil
+        )
+    }
+
+    func endPresentation(model: DobermanAnimationModel) {
+        saveSnapshot(model: model, at: now())
+    }
+
+    func checkpoint(model: DobermanAnimationModel) {
+        saveSnapshot(model: model, at: now())
+    }
+
+    private func saveSnapshot(model: DobermanAnimationModel, at date: Date) {
+        let snapshot = DobermanSceneSnapshot(
+            version: DobermanSceneSnapshot.currentVersion,
+            seed: seed,
+            worldTravel: Double(model.worldTravel),
+            cloudEpoch: cloudEpoch,
+            closedAt: date,
+            dogX: Double(model.renderState.x),
+            dogFacesLeft: model.renderState.facingDirection == .left
+        )
+
+        guard let data = try? JSONEncoder().encode(snapshot) else { return }
+        defaults.set(data, forKey: Self.storageKey)
+    }
+
+    func storedSnapshot() -> DobermanSceneSnapshot? {
+        guard let data = defaults.data(forKey: Self.storageKey) else { return nil }
+        return try? JSONDecoder().decode(DobermanSceneSnapshot.self, from: data)
+    }
+
+    private func startFreshScene(model: DobermanAnimationModel, at date: Date) {
+        seed = seedProvider()
+        cloudEpoch = date
+        model.restoreScenePosition(worldTravel: 0, dogX: nil, facingDirection: nil)
+    }
+}
 
 @MainActor
 final class DobermanActivity: NotchActivity {
@@ -28,23 +277,34 @@ final class DobermanActivity: NotchActivity {
     let model: DobermanAnimationModel
     let needsModel: DobermanNeedsModel
     let behaviorController: DobermanBehaviorController
+    let sceneSession: DobermanSceneSessionController
     @Published private(set) var expandedAppearanceCount = 0
+    private var sceneCheckpointCancellable: AnyCancellable?
 
     init(
         model: DobermanAnimationModel? = nil,
         needsModel: DobermanNeedsModel? = nil,
-        behaviorController: DobermanBehaviorController? = nil
+        behaviorController: DobermanBehaviorController? = nil,
+        sceneSession: DobermanSceneSessionController? = nil
     ) {
         let resolvedModel = model ?? DobermanAnimationModel()
         let resolvedNeedsModel = needsModel ?? DobermanNeedsModel()
+        let resolvedSceneSession = sceneSession ?? DobermanSceneSessionController()
 
         self.model = resolvedModel
         self.needsModel = resolvedNeedsModel
+        self.sceneSession = resolvedSceneSession
         self.behaviorController = behaviorController
             ?? DobermanBehaviorController(
                 animationModel: resolvedModel,
                 needsModel: resolvedNeedsModel
             )
+        sceneCheckpointCancellable = resolvedModel.$worldTravel
+            .dropFirst()
+            .sink { [weak resolvedModel, weak resolvedSceneSession] _ in
+                guard let resolvedModel, let resolvedSceneSession else { return }
+                resolvedSceneSession.checkpoint(model: resolvedModel)
+            }
     }
 
     var isActive: Bool { true }
@@ -64,7 +324,8 @@ final class DobermanActivity: NotchActivity {
         DobermanExpandedActivityView(
             model: model,
             needsModel: needsModel,
-            behaviorController: behaviorController
+            behaviorController: behaviorController,
+            sceneSession: sceneSession
         )
     }
 
@@ -83,6 +344,11 @@ final class DobermanActivity: NotchActivity {
     func activityDidAppear() {
         expandedAppearanceCount += 1
         guard expandedAppearanceCount == 1 else { return }
+        sceneSession.beginPresentation(
+            model: model,
+            selectedTime: Defaults[.dobermanSceneTime],
+            usesDynamicTime: Defaults[.dobermanDynamicTimeEnabled]
+        )
         behaviorController.transitionToExpanded()
     }
 
@@ -90,6 +356,7 @@ final class DobermanActivity: NotchActivity {
         guard expandedAppearanceCount > 0 else { return }
         expandedAppearanceCount -= 1
         guard expandedAppearanceCount == 0 else { return }
+        sceneSession.endPresentation(model: model)
         behaviorController.transitionToClosed()
     }
 }
@@ -171,6 +438,21 @@ enum DobermanFoodPlateSide: Equatable, Sendable {
     case left, right
 
     var direction: CGFloat { self == .left ? -1 : 1 }
+}
+
+enum DobermanCareFeedbackKind: Equatable, Sendable {
+    case food
+    case water
+
+    var label: String { self == .food ? "Food" : "Water" }
+    var icon: String { self == .food ? "fork.knife" : "drop.fill" }
+    var color: Color { self == .food ? .orange : .cyan }
+}
+
+struct DobermanCareFeedback: Identifiable, Equatable, Sendable {
+    let id = UUID()
+    let kind: DobermanCareFeedbackKind
+    let amount: Int
 }
 
 enum DobermanInterruptibility: Equatable, Sendable {
@@ -286,6 +568,8 @@ enum DobermanAnimationDefinitions {
     static let frameDurationMilliseconds = 100
     static let sitHoldMilliseconds = 7000
     static let defaultScale: CGFloat = 3
+    static let expandedSceneScaleMultiplier: CGFloat = 1
+    static let expandedSceneScale = defaultScale * expandedSceneScaleMultiplier
     static let movementStartDelayMilliseconds = 50
     static let walkingBobStepMilliseconds = 180
     static let defaultStageWidth: CGFloat = 640
@@ -746,6 +1030,7 @@ final class DobermanBehaviorController: ObservableObject {
     @Published private(set) var waterPlateSide: DobermanFoodPlateSide = .left
     @Published private(set) var isWaterPlateInScene = false
     @Published private(set) var waterPlateSpawnTravel: CGFloat = 0
+    @Published private(set) var careFeedback: DobermanCareFeedback?
 
     private(set) var generation = 0
 
@@ -753,23 +1038,28 @@ final class DobermanBehaviorController: ObservableObject {
     private let needsModel: DobermanNeedsModel
     private let randomDoubleProvider: () -> Double
     private let randomPercentProvider: () -> CGFloat
+    private let careInteractionDuration: TimeInterval
     private var behaviorTask: Task<Void, Never>?
+    private var feedbackTask: Task<Void, Never>?
     private var lastAction: DobermanBehaviorAction?
 
     init(
         animationModel: DobermanAnimationModel,
         needsModel: DobermanNeedsModel,
         randomDouble: @escaping () -> Double = { Double.random(in: 0..<1) },
-        randomPercent: @escaping () -> CGFloat = { CGFloat.random(in: 15...85) }
+        randomPercent: @escaping () -> CGFloat = { CGFloat.random(in: 15...85) },
+        careInteractionDuration: TimeInterval = 5
     ) {
         self.animationModel = animationModel
         self.needsModel = needsModel
         self.randomDoubleProvider = randomDouble
         self.randomPercentProvider = randomPercent
+        self.careInteractionDuration = max(0, careInteractionDuration)
     }
 
     deinit {
         behaviorTask?.cancel()
+        feedbackTask?.cancel()
     }
 
     func transitionToExpanded() {
@@ -799,6 +1089,8 @@ final class DobermanBehaviorController: ObservableObject {
         isFoodPlateInScene = false
         waterPlateState = .hidden
         isWaterPlateInScene = false
+        feedbackTask?.cancel()
+        careFeedback = nil
         needsModel.reconcile(mode: currentNeedsMode)
         animationModel.transitionToClosed()
         presentationPhase = .closedSleeping
@@ -811,7 +1103,7 @@ final class DobermanBehaviorController: ObservableObject {
         foodPlateState = .full
         isFoodPlateInScene = false
         startCareInteraction(.eat) { [weak self] in
-            self?.needsModel.feed()
+            self?.applyCareReward(.food)
         }
     }
 
@@ -822,7 +1114,30 @@ final class DobermanBehaviorController: ObservableObject {
         waterPlateState = .full
         isWaterPlateInScene = false
         startCareInteraction(.drink) { [weak self] in
-            self?.needsModel.giveWater()
+            self?.applyCareReward(.water)
+        }
+    }
+
+    private func applyCareReward(_ kind: DobermanCareFeedbackKind) {
+        let previousValue = kind == .food ? needsModel.hunger : needsModel.thirst
+        if kind == .food {
+            needsModel.feed()
+        } else {
+            needsModel.giveWater()
+        }
+        let updatedValue = kind == .food ? needsModel.hunger : needsModel.thirst
+        let amount = max(0, Int(round(updatedValue - previousValue)))
+        showCareFeedback(kind: kind, amount: amount)
+    }
+
+    private func showCareFeedback(kind: DobermanCareFeedbackKind, amount: Int) {
+        feedbackTask?.cancel()
+        let feedback = DobermanCareFeedback(kind: kind, amount: amount)
+        careFeedback = feedback
+        feedbackTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(1.4))
+            guard !Task.isCancelled, self?.careFeedback?.id == feedback.id else { return }
+            self?.careFeedback = nil
         }
     }
 
@@ -1071,7 +1386,7 @@ final class DobermanBehaviorController: ObservableObject {
         try ensureCurrent(behaviorToken)
 
         let emptyPlateTask = Task { @MainActor [weak self] in
-            try await Task.sleep(for: .seconds(5))
+            try await Task.sleep(for: .seconds(careInteractionDuration))
             guard let self else { return }
             try self.ensureCurrent(behaviorToken)
             self.foodPlateState = .empty
@@ -1090,7 +1405,7 @@ final class DobermanBehaviorController: ObservableObject {
         try ensureCurrent(behaviorToken)
 
         let emptyPlateTask = Task { @MainActor [weak self] in
-            try await Task.sleep(for: .seconds(5))
+            try await Task.sleep(for: .seconds(careInteractionDuration))
             guard let self else { return }
             try self.ensureCurrent(behaviorToken)
             self.waterPlateState = .empty
@@ -1257,6 +1572,7 @@ final class DobermanAnimationModel: ObservableObject {
     private var expandedStageWidth = DobermanAnimationDefinitions.defaultStageWidth
     private let timingScale: Double
     private var animationTask: Task<Void, Never>?
+    private var preservesRestoredDogPosition = false
 
     init(timingScale: Double = 1, startsSleeping: Bool = true) {
         self.timingScale = max(0, timingScale)
@@ -1275,12 +1591,31 @@ final class DobermanAnimationModel: ObservableObject {
         expandedStageWidth = max(0, width)
         let spriteWidth = DobermanAnimationDefinitions.frameWidth
             * DobermanAnimationDefinitions.defaultScale
+        let proposedX = preservesRestoredDogPosition
+            ? renderState.x
+            : expandedStageWidth / 2 - spriteWidth / 2
         renderState = updatedState(
             x: DobermanAnimationDefinitions.visibleX(
-                for: expandedStageWidth / 2 - spriteWidth / 2,
+                for: proposedX,
                 stageWidth: expandedStageWidth,
                 spriteWidth: spriteWidth
             )
+        )
+    }
+
+    func restoreScenePosition(
+        worldTravel: CGFloat,
+        dogX: CGFloat?,
+        facingDirection: DobermanFacingDirection?
+    ) {
+        self.worldTravel = worldTravel
+        preservesRestoredDogPosition = dogX != nil
+        renderState = updatedState(
+            x: dogX ?? renderState.x,
+            movementDuration: 0,
+            isWalking: false,
+            walkBobOffset: 0,
+            facingDirection: facingDirection ?? renderState.facingDirection
         )
     }
 
@@ -1615,6 +1950,7 @@ final class DobermanAnimationModel: ObservableObject {
         target: DobermanMovementTarget,
         token: Int
     ) async throws {
+        preservesRestoredDogPosition = false
         let animation = DobermanAnimationDefinitions.animation(step.action)
         let spriteWidth = DobermanAnimationDefinitions.frameWidth
             * DobermanAnimationDefinitions.defaultScale
@@ -1857,12 +2193,14 @@ struct DobermanExpandedActivityView: View {
     @ObservedObject var model: DobermanAnimationModel
     @ObservedObject var needsModel: DobermanNeedsModel
     @ObservedObject var behaviorController: DobermanBehaviorController
+    @ObservedObject var sceneSession: DobermanSceneSessionController
     @Default(.dobermanShowStatusPanel) private var showStatusPanel
 
     var body: some View {
         HStack(spacing: 12) {
             DobermanSceneView(
                 model: model,
+                careFeedback: behaviorController.careFeedback,
                 foodPlateState: behaviorController.foodPlateState,
                 foodPlateSide: behaviorController.foodPlateSide,
                 isFoodPlateInScene: behaviorController.isFoodPlateInScene,
@@ -1872,8 +2210,10 @@ struct DobermanExpandedActivityView: View {
                 isWaterPlateInScene: behaviorController.isWaterPlateInScene,
                 waterPlateSpawnTravel: behaviorController.waterPlateSpawnTravel,
                 onRetireFoodPlate: behaviorController.retireFoodPlate,
-                onRetireWaterPlate: behaviorController.retireWaterPlate
+                onRetireWaterPlate: behaviorController.retireWaterPlate,
+                sceneSession: sceneSession
             )
+                .frame(height: dobermanSceneContentHeight)
                 .layoutPriority(1)
 
             if showStatusPanel {
@@ -1887,15 +2227,27 @@ struct DobermanExpandedActivityView: View {
         .padding(.horizontal, 14)
         .padding(.top, 10)
         .padding(.bottom, dobermanExpandedBottomMargin)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .fixedSize(horizontal: false, vertical: true)
+        .background {
+            GeometryReader { proxy in
+                Color.clear.preference(
+                    key: OpenNotchHeightPreferenceKey.self,
+                    value: clampedOpenNotchHeight(
+                        proxy.size.height + dobermanOpenNotchHeightPadding
+                    )
+                )
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .accessibilityLabel("Doberman")
     }
 }
 
 struct DobermanSceneView: View {
-    static let grassDepth: CGFloat = 1.38
+    static let grassDepth: CGFloat = 1
 
     @ObservedObject var model: DobermanAnimationModel
+    let careFeedback: DobermanCareFeedback?
     let foodPlateState: DobermanFoodPlateState
     let foodPlateSide: DobermanFoodPlateSide
     let isFoodPlateInScene: Bool
@@ -1906,14 +2258,16 @@ struct DobermanSceneView: View {
     let waterPlateSpawnTravel: CGFloat
     let onRetireFoodPlate: () -> Void
     let onRetireWaterPlate: () -> Void
+    @ObservedObject var sceneSession: DobermanSceneSessionController
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     @Default(.dobermanReduceMotion) private var activityReduceMotion
-    @Default(.dobermanBackground) private var selectedBackground
-    @Default(.dobermanSceneTime) private var selectedTime
-
     var body: some View {
         GeometryReader { proxy in
-            let scale = DobermanAnimationDefinitions.defaultScale
+            let scale = DobermanAnimationDefinitions.expandedSceneScale
+            let spriteEnvelopeWidth = DobermanAnimationDefinitions.frameWidth
+                * DobermanAnimationDefinitions.defaultScale
+            let spriteWidth = DobermanAnimationDefinitions.frameWidth * scale
+            let spriteXInset = (spriteEnvelopeWidth - spriteWidth) / 2
             let spriteHeight = DobermanAnimationDefinitions.frameHeight * scale
             let groundY = max(0, proxy.size.height - spriteHeight - 12)
             let reducedMotion = systemReduceMotion || activityReduceMotion
@@ -1922,29 +2276,13 @@ struct DobermanSceneView: View {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(.black)
 
-                Group {
-                    DobermanParallaxLayer(
-                        imageName: selectedTime.assetName(for: "sun", background: selectedBackground),
-                        travel: 0,
-                        depth: 0.4
-                    )
-                    DobermanScrollingCloudLayer(
-                        travel: model.worldTravel,
-                        isPaused: reducedMotion,
-                        imageName: selectedTime.assetName(for: "clouds", background: selectedBackground)
-                    )
-                    DobermanParallaxLayer(
-                        imageName: selectedTime.assetName(for: "city", background: selectedBackground),
-                        travel: model.worldTravel,
-                        depth: 0.8
-                    )
-                    DobermanParallaxLayer(
-                        imageName: selectedTime.assetName(for: "grass", background: selectedBackground),
-                        travel: model.worldTravel,
-                        depth: Self.grassDepth,
-                        usesNearestNeighbor: true
-                    )
-                }
+                DobermanSceneLayersView(
+                    definition: .defaultNoon,
+                    worldTravel: model.worldTravel,
+                    seed: sceneSession.seed,
+                    cloudEpoch: sceneSession.cloudEpoch,
+                    isPaused: reducedMotion
+                )
 
                 if foodPlateState != .hidden {
                     let grassTravel = (model.worldTravel - foodPlateSpawnTravel) * Self.grassDepth
@@ -1987,11 +2325,25 @@ struct DobermanSceneView: View {
                 DobermanSpriteSheetView(frame: model.renderState.frame, scale: scale)
                     .scaleEffect(x: model.renderState.facingDirection.scaleX, y: 1, anchor: .center)
                     .offset(
-                        x: model.renderState.x,
-                        y: groundY - 7 + (reducedMotion ? 0 : model.renderState.walkBobOffset)
+                        x: model.renderState.x + spriteXInset,
+                        y: groundY - 17 + (reducedMotion ? 0 : model.renderState.walkBobOffset)
                     )
                     .animation(.linear(duration: reducedMotion ? 0.12 : model.renderState.movementDuration), value: model.renderState.x)
                     .accessibilityLabel("Doberman in the scene")
+
+                sceneSession.activeTime.lightingOverlay
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+
+                if let careFeedback {
+                    DobermanCareFeedbackView(feedback: careFeedback)
+                        .id(careFeedback.id)
+                        .position(
+                            x: model.renderState.x + spriteEnvelopeWidth / 2,
+                            y: max(18, groundY - 16)
+                        )
+                        .allowsHitTesting(false)
+                }
             }
             .animation(
                 .linear(duration: reducedMotion ? 0.01 : model.renderState.movementDuration),
@@ -2005,6 +2357,39 @@ struct DobermanSceneView: View {
             .onAppear { model.updateExpandedStageWidth(proxy.size.width) }
             .onChange(of: proxy.size.width) { _, width in model.updateExpandedStageWidth(width) }
         }
+    }
+}
+
+private struct DobermanCareFeedbackView: View {
+    let feedback: DobermanCareFeedback
+    @State private var isPresented = false
+
+    private var message: String {
+        feedback.amount > 0 ? "+\(feedback.amount) \(feedback.kind.label)" : "Full"
+    }
+
+    var body: some View {
+        Label(message, systemImage: feedback.kind.icon)
+            .font(.system(size: 12, weight: .bold, design: .rounded))
+            .foregroundStyle(feedback.kind.color)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(.black.opacity(0.72), in: Capsule())
+            .overlay(Capsule().stroke(.white.opacity(0.18), lineWidth: 1))
+            .shadow(color: .black.opacity(0.55), radius: 2, y: 1)
+            .scaleEffect(isPresented ? 1 : 0.85)
+            .offset(y: isPresented ? -16 : 0)
+            .opacity(isPresented ? 0 : 1)
+            .onAppear {
+                withAnimation(.easeOut(duration: 1.35)) {
+                    isPresented = true
+                }
+            }
+            .accessibilityLabel(
+                feedback.amount > 0
+                    ? "Plus \(feedback.amount) \(feedback.kind.label)"
+                    : "\(feedback.kind.label) full"
+            )
     }
 }
 
@@ -2083,35 +2468,103 @@ struct DobermanScenePlateView: View {
     }
 }
 
-/// Keeps the clouds drifting even while the Doberman and the rest of the scene are idle.
-struct DobermanScrollingCloudLayer: View {
-    static let depth: CGFloat = 0.10
-    static let travelPointsPerSecond: CGFloat = 24
+enum DobermanTileSequence {
+    static func variantIndex(tileIndex: Int, seed: UInt64, variantCount: Int) -> Int {
+        guard variantCount > 1 else { return 0 }
 
-    let travel: CGFloat
+        var previous = Int(mixed(seed) % UInt64(variantCount))
+        guard tileIndex != 0 else { return previous }
+
+        let direction = tileIndex > 0 ? 1 : -1
+        for step in stride(from: direction, through: tileIndex, by: direction) {
+            let stepBits = UInt64(bitPattern: Int64(step))
+            let salt: UInt64 = direction > 0 ? 0xA11C_E001 : 0x1E57_BA11
+            let choice = Int(mixed(seed ^ stepBits ^ salt) % UInt64(variantCount - 1))
+            previous = choice >= previous ? choice + 1 : choice
+        }
+        return previous
+    }
+
+    private static func mixed(_ value: UInt64) -> UInt64 {
+        var result = value &+ 0x9E37_79B9_7F4A_7C15
+        result = (result ^ (result >> 30)) &* 0xBF58_476D_1CE4_E5B9
+        result = (result ^ (result >> 27)) &* 0x94D0_49BB_1331_11EB
+        return result ^ (result >> 31)
+    }
+}
+
+struct DobermanSceneLayersView: View {
+    let definition: DobermanSceneDefinition
+    let worldTravel: CGFloat
+    let seed: UInt64
+    let cloudEpoch: Date
     let isPaused: Bool
-    let imageName: String
-    @State private var animationStart = Date.now
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: isPaused)) { context in
-            let elapsed = max(0, context.date.timeIntervalSince(animationStart))
-            DobermanParallaxLayer(
-                imageName: imageName,
-                travel: travel + CGFloat(elapsed) * Self.travelPointsPerSecond,
-                depth: Self.depth
+            let elapsed = max(0, context.date.timeIntervalSince(cloudEpoch))
+            ZStack(alignment: .topLeading) {
+                ForEach(definition.flattenedLayers) { layer in
+                    DobermanSceneLayerView(
+                        layer: layer,
+                        worldTravel: worldTravel,
+                        elapsed: elapsed,
+                        sceneSeed: seed
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+        .accessibilityHidden(true)
+        .allowsHitTesting(false)
+    }
+}
+
+private struct DobermanSceneLayerView: View {
+    let layer: DobermanSceneLayerDefinition
+    let worldTravel: CGFloat
+    let elapsed: TimeInterval
+    let sceneSeed: UInt64
+
+    @ViewBuilder
+    var body: some View {
+        switch layer.content {
+        case .fixed(let imageName, let fillsViewport):
+            GeometryReader { proxy in
+                Image(imageName)
+                    .resizable()
+                    .interpolation(.none)
+                    .antialiased(false)
+                    .frame(
+                        width: fillsViewport
+                            ? proxy.size.width
+                            : DobermanSceneDefinition.displaySize.width,
+                        height: proxy.size.height
+                    )
+                    .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
+            }
+        case .tiled(let imageNames, let seedSalt):
+            DobermanTiledSceneLayer(
+                imageNames: imageNames,
+                seed: sceneSeed ^ seedSalt,
+                travel: worldTravel * layer.worldMovementRatio
+            )
+        case .drifting(let imageName, let pointsPerSecond):
+            DobermanTiledSceneLayer(
+                imageNames: [imageName],
+                seed: 0,
+                travel: worldTravel * layer.worldMovementRatio
+                    + CGFloat(elapsed) * pointsPerSecond
             )
         }
     }
 }
 
-/// A height-fitted, endlessly tiled panorama. `travel` is cumulative so crossing a
-/// tile boundary remains seamless, while `depth` gives distant layers less motion.
-struct DobermanParallaxLayer: View, Animatable {
-    let imageName: String
+struct DobermanTiledSceneLayer: View, Animatable {
+    let imageNames: [String]
+    let seed: UInt64
     var travel: CGFloat
-    let depth: CGFloat
-    var usesNearestNeighbor = false
 
     var animatableData: CGFloat {
         get { travel }
@@ -2120,40 +2573,36 @@ struct DobermanParallaxLayer: View, Animatable {
 
     var body: some View {
         GeometryReader { proxy in
-            let tileWidth = max(1, proxy.size.height * 300 / 70)
-            let wrappedTravel = Self.wrappedOffset(for: travel * depth, tileWidth: tileWidth)
+            let tileWidth = max(
+                1,
+                proxy.size.height
+                    * DobermanSceneDefinition.sourceSize.width
+                    / DobermanSceneDefinition.sourceSize.height
+            )
+            let baseTileIndex = Int(floor(travel / tileWidth))
+            let wrappedTravel = Self.wrappedOffset(for: travel, tileWidth: tileWidth)
             let firstX = -wrappedTravel - tileWidth
             let tileCount = Self.tileCount(viewportWidth: proxy.size.width, tileWidth: tileWidth)
 
-            Group {
-                if usesNearestNeighbor {
-                    HStack(spacing: 0) {
-                        ForEach(0..<tileCount, id: \.self) { _ in
-                            Image(imageName)
-                                .resizable()
-                                .interpolation(.none)
-                                .antialiased(false)
-                                .frame(width: tileWidth, height: proxy.size.height)
-                        }
-                    }
-                    .frame(width: CGFloat(tileCount) * tileWidth, alignment: .leading)
-                    .offset(x: firstX)
-                } else {
-                    Canvas(rendersAsynchronously: true) { context, size in
-                        let image = context.resolve(Image(imageName))
-
-                        for index in 0..<tileCount {
-                            let rect = CGRect(
-                                x: firstX + CGFloat(index) * tileWidth,
-                                y: 0,
-                                width: tileWidth,
-                                height: size.height
-                            )
-                            context.draw(image, in: rect)
-                        }
+            HStack(spacing: 0) {
+                ForEach(0..<tileCount, id: \.self) { offset in
+                    let tileIndex = baseTileIndex + offset - 1
+                    let variantIndex = DobermanTileSequence.variantIndex(
+                        tileIndex: tileIndex,
+                        seed: seed,
+                        variantCount: imageNames.count
+                    )
+                    if imageNames.indices.contains(variantIndex) {
+                        Image(imageNames[variantIndex])
+                            .resizable()
+                            .interpolation(.none)
+                            .antialiased(false)
+                            .frame(width: tileWidth, height: proxy.size.height)
                     }
                 }
             }
+            .frame(width: CGFloat(tileCount) * tileWidth, alignment: .leading)
+            .offset(x: firstX)
             .frame(
                 width: proxy.size.width,
                 height: proxy.size.height,
@@ -2173,6 +2622,54 @@ struct DobermanParallaxLayer: View, Animatable {
         let width = max(1, tileWidth)
         let remainder = travel.truncatingRemainder(dividingBy: width)
         return remainder >= 0 ? remainder : remainder + width
+    }
+}
+
+/// Compatibility wrapper for callers and movement-math tests that use a single tile.
+struct DobermanParallaxLayer: View, Animatable {
+    let imageName: String
+    var travel: CGFloat
+    let depth: CGFloat
+    var usesNearestNeighbor = false
+
+    var animatableData: CGFloat {
+        get { travel }
+        set { travel = newValue }
+    }
+
+    var body: some View {
+        DobermanTiledSceneLayer(
+            imageNames: [imageName],
+            seed: 0,
+            travel: travel * depth
+        )
+    }
+
+    static func tileCount(viewportWidth: CGFloat, tileWidth: CGFloat) -> Int {
+        DobermanTiledSceneLayer.tileCount(
+            viewportWidth: viewportWidth,
+            tileWidth: tileWidth
+        )
+    }
+
+    static func wrappedOffset(for travel: CGFloat, tileWidth: CGFloat) -> CGFloat {
+        DobermanTiledSceneLayer.wrappedOffset(for: travel, tileWidth: tileWidth)
+    }
+}
+
+private extension DobermanSceneTime {
+    @ViewBuilder
+    var lightingOverlay: some View {
+        switch self {
+        case .night:
+            Color(red: 0.02, green: 0.06, blue: 0.20).opacity(0.48)
+        case .morning:
+            Color(red: 1.0, green: 0.58, blue: 0.25).opacity(0.10)
+        case .noon:
+            Color.clear
+        case .evening:
+            Color(red: 0.20, green: 0.08, blue: 0.28).opacity(0.28)
+        }
     }
 }
 
@@ -2329,7 +2826,7 @@ struct DobermanSettingsView: View {
                     Text("Match time of day automatically")
                 }
 
-                Text("Automatic time matching will use your current time zone in a future update.")
+                Text("Automatic time matching updates when the activity opens using your current time zone.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

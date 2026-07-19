@@ -72,7 +72,7 @@ enum DobermanBackground: String, CaseIterable, Identifiable, Defaults.Serializab
     case city
 
     var id: Self { self }
-    var displayName: String { "City" }
+    var displayName: String { "Default" }
 }
 
 enum DobermanPet: String, CaseIterable, Identifiable, Defaults.Serializable {
@@ -84,13 +84,28 @@ enum DobermanPet: String, CaseIterable, Identifiable, Defaults.Serializable {
 }
 
 enum DobermanSceneTime: String, CaseIterable, Identifiable, Defaults.Serializable {
+    case night
     case morning
+    case noon
+    case evening
 
     var id: Self { self }
-    var displayName: String { "Morning" }
+    var displayName: String {
+        switch self {
+        case .night: "Night"
+        case .morning: "Morning"
+        case .noon: "Noon"
+        case .evening: "Evening"
+        }
+    }
 
-    func assetName(for layer: String, background: DobermanBackground) -> String {
-        "background-\(background.rawValue)-\(rawValue)-\(layer)"
+    static func resolved(for date: Date, calendar: Calendar = .current) -> Self {
+        switch calendar.component(.hour, from: date) {
+        case 6..<12: .morning
+        case 12..<18: .noon
+        case 18..<24: .evening
+        default: .night
+        }
     }
 }
 
@@ -228,7 +243,7 @@ extension Defaults.Keys {
     )
     static let dobermanSceneTime = Key<DobermanSceneTime>(
         "dobermanSceneTime",
-        default: .morning
+        default: .noon
     )
     static let dobermanDynamicTimeEnabled = Key<Bool>(
         "dobermanDynamicTimeEnabled",

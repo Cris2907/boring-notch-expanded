@@ -31,6 +31,7 @@ final class DobermanActivityTests: XCTestCase {
         )
         XCTAssertTrue(activity.supportsConfiguration)
         XCTAssertTrue(activity.isAvailable)
+        XCTAssertEqual(activity.metadata.preferredExpandedHeight, 310)
     }
 
     func testLifecycleReferenceCountingControlsLiveVisibility() {
@@ -81,6 +82,15 @@ final class DobermanActivityTests: XCTestCase {
         )
         XCTAssertEqual(DobermanAnimationDefinitions.frameDurationMilliseconds, 100)
         XCTAssertEqual(DobermanAnimationDefinitions.sitHoldMilliseconds, 7000)
+    }
+
+    func testExpandedSceneRendersDobermanAtDefaultScale() {
+        XCTAssertEqual(DobermanPet.allCases, [.doberman])
+        XCTAssertEqual(DobermanAnimationDefinitions.expandedSceneScaleMultiplier, 1)
+        XCTAssertEqual(
+            DobermanAnimationDefinitions.expandedSceneScale,
+            DobermanAnimationDefinitions.defaultScale
+        )
     }
 
     func testDefaultTimelineMatchesJSXOrder() {
@@ -163,6 +173,156 @@ final class DobermanActivityTests: XCTestCase {
         XCTAssertEqual(DobermanParallaxLayer.wrappedOffset(for: -25, tileWidth: 500), 475)
     }
 
+    func testSceneDefinitionPreservesLayerAndSublayerOrder() {
+        XCTAssertEqual(DobermanSceneDefinition.sourceSize, CGSize(width: 300, height: 120))
+        XCTAssertEqual(DobermanSceneDefinition.displaySize, CGSize(width: 600, height: 240))
+        XCTAssertEqual(
+            DobermanSceneDefinition.defaultNoon.flattenedLayers.map(\.id),
+            [
+                "1-sky",
+                "2-sun",
+                "3-clouds-far",
+                "3-clouds-near",
+                "4-background-strip",
+                "5-trees",
+                "6-foreground-strip"
+            ]
+        )
+    }
+
+    func testTileSequenceIsStableAndNeverRepeatsAdjacentVariants() {
+        let seed: UInt64 = 0xCAFE_BABE
+        let firstPass = (-50...50).map {
+            DobermanTileSequence.variantIndex(tileIndex: $0, seed: seed, variantCount: 3)
+        }
+        let secondPass = (-50...50).map {
+            DobermanTileSequence.variantIndex(tileIndex: $0, seed: seed, variantCount: 3)
+        }
+
+        XCTAssertEqual(firstPass, secondPass)
+        XCTAssertTrue(zip(firstPass, firstPass.dropFirst()).allSatisfy { $0.0 != $0.1 })
+
+        let twoVariantPass = (-20...20).map {
+            DobermanTileSequence.variantIndex(tileIndex: $0, seed: seed, variantCount: 2)
+        }
+        XCTAssertTrue(zip(twoVariantPass, twoVariantPass.dropFirst()).allSatisfy { $0.0 != $0.1 })
+    }
+
+    func testAutomaticSceneTimeBoundaries() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+
+        func date(hour: Int) -> Date {
+            calendar.date(from: DateComponents(year: 2026, month: 7, day: 15, hour: hour))!
+        }
+
+        XCTAssertEqual(DobermanSceneTime.resolved(for: date(hour: 0), calendar: calendar), .night)
+        XCTAssertEqual(DobermanSceneTime.resolved(for: date(hour: 6), calendar: calendar), .morning)
+        XCTAssertEqual(DobermanSceneTime.resolved(for: date(hour: 12), calendar: calendar), .noon)
+        XCTAssertEqual(DobermanSceneTime.resolved(for: date(hour: 18), calendar: calendar), .evening)
+    }
+
+    func testSceneSessionRestoresSceneryAndShortLivedDogPosition() {
+        let defaults = makeDefaultsSuite()
+        var currentDate = Date(timeIntervalSince1970: 10_000)
+        let sourceModel = DobermanAnimationModel(startsSleeping: false)
+        defer { sourceModel.cancelAll() }
+        let sourceSession = DobermanSceneSessionController(
+            defaults: defaults,
+            now: { currentDate },
+            seedProvider: { 42 }
+        )
+        sourceSession.beginPresentation(
+            model: sourceModel,
+            selectedTime: .noon,
+            usesDynamicTime: false
+        )
+        sourceModel.restoreScenePosition(
+            worldTravel: 321,
+            dogX: 140,
+            facingDirection: .left
+        )
+        sourceSession.endPresentation(model: sourceModel)
+
+        currentDate.addTimeInterval(20)
+        let restoredModel = DobermanAnimationModel(startsSleeping: false)
+        defer { restoredModel.cancelAll() }
+        let restoredSession = DobermanSceneSessionController(
+            defaults: defaults,
+            now: { currentDate },
+            seedProvider: { 999 }
+        )
+        restoredSession.beginPresentation(
+            model: restoredModel,
+            selectedTime: .noon,
+            usesDynamicTime: false
+        )
+
+        XCTAssertEqual(restoredSession.seed, 42)
+        XCTAssertEqual(restoredModel.worldTravel, 321)
+        XCTAssertEqual(restoredModel.renderState.x, 140)
+        XCTAssertEqual(restoredModel.renderState.facingDirection, .left)
+    }
+
+    func testSceneSessionExpiresDogBeforeSceneryAndEventuallyRegenerates() {
+        let defaults = makeDefaultsSuite()
+        var currentDate = Date(timeIntervalSince1970: 20_000)
+        let sourceModel = DobermanAnimationModel(startsSleeping: false)
+        defer { sourceModel.cancelAll() }
+        let sourceSession = DobermanSceneSessionController(
+            defaults: defaults,
+            now: { currentDate },
+            seedProvider: { 7 }
+        )
+        sourceSession.beginPresentation(
+            model: sourceModel,
+            selectedTime: .noon,
+            usesDynamicTime: false
+        )
+        sourceModel.restoreScenePosition(
+            worldTravel: 222,
+            dogX: 110,
+            facingDirection: .left
+        )
+        sourceSession.endPresentation(model: sourceModel)
+
+        currentDate.addTimeInterval(31)
+        let sceneryOnlyModel = DobermanAnimationModel(startsSleeping: false)
+        defer { sceneryOnlyModel.cancelAll() }
+        let sceneryOnlySession = DobermanSceneSessionController(
+            defaults: defaults,
+            now: { currentDate },
+            seedProvider: { 88 }
+        )
+        sceneryOnlySession.beginPresentation(
+            model: sceneryOnlyModel,
+            selectedTime: .noon,
+            usesDynamicTime: false
+        )
+
+        XCTAssertEqual(sceneryOnlySession.seed, 7)
+        XCTAssertEqual(sceneryOnlyModel.worldTravel, 222)
+        XCTAssertNotEqual(sceneryOnlyModel.renderState.x, 110)
+        XCTAssertEqual(sceneryOnlyModel.renderState.facingDirection, .right)
+
+        currentDate.addTimeInterval(270)
+        let expiredModel = DobermanAnimationModel(startsSleeping: false)
+        defer { expiredModel.cancelAll() }
+        let expiredSession = DobermanSceneSessionController(
+            defaults: defaults,
+            now: { currentDate },
+            seedProvider: { 99 }
+        )
+        expiredSession.beginPresentation(
+            model: expiredModel,
+            selectedTime: .noon,
+            usesDynamicTime: false
+        )
+
+        XCTAssertEqual(expiredSession.seed, 99)
+        XCTAssertEqual(expiredModel.worldTravel, 0)
+    }
+
     func testScenePlateRemainsVisibleUntilFullyOutsideViewport() {
         let halfWidth = DobermanScenePlateView.size.width / 2
 
@@ -209,17 +369,20 @@ final class DobermanActivityTests: XCTestCase {
         defer { model.cancelAll() }
         let needs = makeNeedsModel()
         let controller = DobermanBehaviorController(animationModel: model, needsModel: needs)
+        let sceneSession = DobermanSceneSessionController(defaults: makeDefaultsSuite())
 
         let expanded = DobermanExpandedActivityView(
             model: model,
             needsModel: needs,
-            behaviorController: controller
+            behaviorController: controller,
+            sceneSession: sceneSession
         )
         let live = DobermanLivePresentationView(model: model)
 
         XCTAssertTrue(expanded.model === model)
         XCTAssertTrue(expanded.needsModel === needs)
         XCTAssertTrue(expanded.behaviorController === controller)
+        XCTAssertTrue(expanded.sceneSession === sceneSession)
         XCTAssertTrue(live.model === model)
     }
 
@@ -427,7 +590,8 @@ final class DobermanActivityTests: XCTestCase {
                 animationModel: model,
                 needsModel: needs,
                 randomDouble: { 0 },
-                randomPercent: { 50 }
+                randomPercent: { 50 },
+                careInteractionDuration: 0
             )
 
             controller.transitionToExpanded()
@@ -436,15 +600,15 @@ final class DobermanActivityTests: XCTestCase {
             XCTAssertEqual(controller.generation, expandedGeneration + 1)
             XCTAssertEqual(controller.currentAction, .eat)
 
-            for _ in 0..<20 where needs.hunger <= 20 {
-                await Task.yield()
+            for _ in 0..<100 where needs.hunger <= 20 {
+                try? await Task.sleep(for: .milliseconds(1))
             }
             XCTAssertGreaterThan(needs.hunger, 20)
 
             controller.giveWater()
             XCTAssertEqual(controller.currentAction, .drink)
-            for _ in 0..<20 where needs.thirst <= 20 {
-                await Task.yield()
+            for _ in 0..<100 where needs.thirst <= 20 {
+                try? await Task.sleep(for: .milliseconds(1))
             }
             XCTAssertGreaterThan(needs.thirst, 20)
 

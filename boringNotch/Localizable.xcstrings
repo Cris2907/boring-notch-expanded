@@ -702,6 +702,9 @@
         }
       }
     },
+    "%@ full" : {
+
+    },
     "%@, %@ remaining" : {
 
     },
@@ -2947,7 +2950,7 @@
         }
       }
     },
-    "Automatic time matching will use your current time zone in a future update." : {
+    "Automatic time matching updates when the activity opens using your current time zone." : {
 
     },
     "Automatically check for updates" : {
@@ -16521,6 +16524,16 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "已插入"
+          }
+        }
+      }
+    },
+    "Plus %lld %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Plus %1$lld %2$@"
           }
         }
       }
