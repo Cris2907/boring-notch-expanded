@@ -188,6 +188,16 @@ final class DobermanActivityTests: XCTestCase {
                 "6-foreground-strip"
             ]
         )
+
+        let layersByID = Dictionary(
+            uniqueKeysWithValues: DobermanSceneDefinition.defaultNoon.flattenedLayers.map {
+                ($0.id, $0)
+            }
+        )
+        XCTAssertEqual(layersByID["2-sun"]?.worldMovementRatio, 0)
+        XCTAssertEqual(layersByID["3-clouds-far"]?.worldMovementRatio, 0)
+        XCTAssertEqual(layersByID["3-clouds-near"]?.worldMovementRatio, 0)
+        XCTAssertEqual(layersByID["4-background-strip"]?.worldMovementRatio, 0.225)
     }
 
     func testTileSequenceIsStableAndNeverRepeatsAdjacentVariants() {
@@ -243,6 +253,7 @@ final class DobermanActivityTests: XCTestCase {
             facingDirection: .left
         )
         sourceSession.endPresentation(model: sourceModel)
+        let cloudEpochAtClose = sourceSession.cloudEpoch
 
         currentDate.addTimeInterval(20)
         let restoredModel = DobermanAnimationModel(startsSleeping: false)
@@ -259,6 +270,10 @@ final class DobermanActivityTests: XCTestCase {
         )
 
         XCTAssertEqual(restoredSession.seed, 42)
+        XCTAssertEqual(
+            restoredSession.cloudEpoch,
+            cloudEpochAtClose.addingTimeInterval(20)
+        )
         XCTAssertEqual(restoredModel.worldTravel, 321)
         XCTAssertEqual(restoredModel.renderState.x, 140)
         XCTAssertEqual(restoredModel.renderState.facingDirection, .left)

@@ -11,6 +11,7 @@ private let dobermanSceneContentHeight: CGFloat = 240
 private let dobermanOpenNotchChromeReserve: CGFloat = 70
 private let dobermanOpenNotchHeightPadding: CGFloat = 26
 private let dobermanExpandedBottomMargin: CGFloat = 40
+private let dobermanGroundWorldMovementRatio: CGFloat = 1
 
 struct DobermanSceneLayerDefinition: Identifiable, Equatable, Sendable {
     enum Content: Equatable, Sendable {
@@ -86,7 +87,7 @@ struct DobermanSceneDefinition: Equatable, Sendable {
                                 imageName: "doberman-default-noon-clouds-far",
                                 pointsPerSecond: 4
                             ),
-                            worldMovementRatio: 0.08
+                            worldMovementRatio: 0
                         )
                     ),
                     .layer(
@@ -96,7 +97,7 @@ struct DobermanSceneDefinition: Equatable, Sendable {
                                 imageName: "doberman-default-noon-clouds-near",
                                 pointsPerSecond: 8
                             ),
-                            worldMovementRatio: 0.14
+                            worldMovementRatio: 0
                         )
                     )
                 ]
@@ -115,7 +116,7 @@ struct DobermanSceneDefinition: Equatable, Sendable {
                                 ],
                                 seedSalt: 0xBACC_600D
                             ),
-                            worldMovementRatio: 0.45
+                            worldMovementRatio: 0.225
                         )
                     )
                 ]
@@ -127,7 +128,7 @@ struct DobermanSceneDefinition: Equatable, Sendable {
                         imageNames: ["doberman-default-noon-trees"],
                         seedSalt: 0x7EEE_5000
                     ),
-                    worldMovementRatio: 0.72
+                    worldMovementRatio: dobermanGroundWorldMovementRatio
                 )
             ),
             .group(
@@ -144,7 +145,7 @@ struct DobermanSceneDefinition: Equatable, Sendable {
                                 ],
                                 seedSalt: 0xF0AE_600D
                             ),
-                            worldMovementRatio: 1
+                            worldMovementRatio: dobermanGroundWorldMovementRatio
                         )
                     )
                 ]
@@ -214,7 +215,9 @@ final class DobermanSceneSessionController: ObservableObject {
         }
 
         seed = snapshot.seed
-        cloudEpoch = snapshot.cloudEpoch
+        // Exclude time spent closed so autonomous cloud drift resumes instead of
+        // jumping ahead when the scene is presented again.
+        cloudEpoch = snapshot.cloudEpoch.addingTimeInterval(elapsed)
         let restoresDog = elapsed <= Self.dogPositionPersistenceDuration
         model.restoreScenePosition(
             worldTravel: CGFloat(snapshot.worldTravel),
