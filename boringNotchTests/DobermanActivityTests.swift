@@ -64,6 +64,8 @@ final class DobermanActivityTests: XCTestCase {
     }
 
     func testJSXDerivedFrameDefinitionsAreCanonical() {
+        XCTAssertEqual(DobermanAnimationDefinitions.sheetColumns, 4)
+        XCTAssertEqual(DobermanAnimationDefinitions.sheetRows, 8)
         XCTAssertEqual(
             DobermanAnimationDefinitions.animation(.walk).frames.map(\.id),
             ["1.1", "1.2", "1.3", "1.4", "2.1", "2.2", "2.3", "2.4"]
@@ -82,6 +84,28 @@ final class DobermanActivityTests: XCTestCase {
         )
         XCTAssertEqual(DobermanAnimationDefinitions.frameDurationMilliseconds, 100)
         XCTAssertEqual(DobermanAnimationDefinitions.sitHoldMilliseconds, 7000)
+        XCTAssertEqual(
+            DobermanAnimationDefinitions.animation(.eatTransition).frames.map(\.id),
+            ["7.1", "7.2"]
+        )
+        XCTAssertEqual(
+            DobermanAnimationDefinitions.animation(.eatLoop).frames.map(\.id),
+            ["7.3", "7.4", "8.1", "8.2"]
+        )
+        XCTAssertTrue(DobermanAnimationDefinitions.animation(.eatLoop).loop)
+        XCTAssertEqual(
+            DobermanAnimationDefinitions.animation(.sniffLoop).frames.map(\.id),
+            ["7.3", "7.4", "8.1", "8.2"]
+        )
+        XCTAssertTrue(DobermanAnimationDefinitions.animation(.sniffLoop).loop)
+        XCTAssertEqual(
+            DobermanAnimationDefinitions.animation(.sniffLoop).holdMilliseconds,
+            1600
+        )
+        XCTAssertEqual(
+            DobermanBehaviorAction.allCases.filter { $0 == .sniff },
+            [.sniff]
+        )
     }
 
     func testExpandedSceneRendersDobermanAtDefaultScale() {

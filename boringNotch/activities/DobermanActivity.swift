@@ -386,6 +386,9 @@ struct DobermanSpriteFrame: Equatable, Sendable {
 
 enum DobermanAnimationName: String, Equatable, Sendable {
     case walk
+    case eatTransition
+    case eatLoop
+    case sniffLoop
     case sitTransition
     case sitHold
     case sitLookAround
@@ -567,7 +570,7 @@ enum DobermanAnimationDefinitions {
     static let frameWidth: CGFloat = 40
     static let frameHeight: CGFloat = 30
     static let sheetColumns = 4
-    static let sheetRows = 6
+    static let sheetRows = 8
     static let frameDurationMilliseconds = 100
     static let sitHoldMilliseconds = 7000
     static let defaultScale: CGFloat = 3
@@ -585,6 +588,8 @@ enum DobermanAnimationDefinitions {
     // Shared transition clips can be reused directly or reversed for the matching stand-up motion.
     private static let sitTransitionFrames = frames("3.1")
     private static let layTransitionFrames = frames("3.4", "4.1", "4.2")
+    private static let eatTransitionFrames = frames("7.1", "7.2")
+    private static let eatLoopFrames = frames("7.3", "7.4", "8.1", "8.2")
 
     // Default expanded-scene loop. Each step references an animation defined in animation(_:).
     static let defaultTimeline: [DobermanTimelineStep] = [
@@ -620,6 +625,19 @@ enum DobermanAnimationDefinitions {
             return DobermanAnimationDefinition(
                 frames: frames("1.1", "1.2", "1.3", "1.4", "2.1", "2.2", "2.3", "2.4"),
                 loop: true
+            )
+        case .eatTransition:
+            // Rows 7.1-7.2: stopping and lowering the head from the walk.
+            return DobermanAnimationDefinition(frames: eatTransitionFrames)
+        case .eatLoop:
+            // Rows 7.3-8.2: shared eating/drinking loop.
+            return DobermanAnimationDefinition(frames: eatLoopFrames, loop: true)
+        case .sniffLoop:
+            // Reuse the eating/drinking cycle for the autonomous sniff behavior.
+            return DobermanAnimationDefinition(
+                frames: eatLoopFrames,
+                loop: true,
+                holdMilliseconds: 1600
             )
         case .sitTransition:
             // Row 3, column 1: stand-to-sit transition.
@@ -724,7 +742,7 @@ enum DobermanAnimationDefinitions {
         switch animationName {
         case .walk:
             return .walking
-        case .sitTransition, .sitHold, .sitLookAround:
+        case .sitTransition, .sitHold, .sitLookAround, .eatTransition, .eatLoop, .sniffLoop:
             return .sitting
         case .standTransition, .standFromLayTransition:
             return .standing
@@ -959,6 +977,7 @@ enum DobermanBehaviorAction: String, CaseIterable, Equatable, Sendable {
     case standFromLaying
     case eat
     case drink
+    case sniff
     case excited
     case scratch
 }
@@ -988,16 +1007,23 @@ enum DobermanPlaceholderBehaviorMappings {
         case .eat:
             return DobermanPlaceholderBehaviorMapping(
                 action: action,
-                requiredPose: .sitting,
-                execution: .animations([.sitHold]),
-                note: "Placeholder: replace with eating frames when available."
+                requiredPose: .standing,
+                execution: .animations([.eatTransition, .eatLoop]),
+                note: "Uses the shared eating/drinking animation sequence."
             )
         case .drink:
             return DobermanPlaceholderBehaviorMapping(
                 action: action,
-                requiredPose: .laying,
-                execution: .animations([.layHold]),
-                note: "Placeholder: replace with drinking frames when available."
+                requiredPose: .standing,
+                execution: .animations([.eatTransition, .eatLoop]),
+                note: "Uses the shared eating/drinking animation sequence."
+            )
+        case .sniff:
+            return DobermanPlaceholderBehaviorMapping(
+                action: action,
+                requiredPose: .standing,
+                execution: .animations([.eatTransition, .sniffLoop]),
+                note: "Reuses the eating/drinking frames for sniffing."
             )
         case .excited:
             return DobermanPlaceholderBehaviorMapping(
@@ -1174,9 +1200,11 @@ final class DobermanBehaviorController: ObservableObject {
             add(.layDown, weight: 8)
             add(.excited, weight: 4)
             add(.scratch, weight: 5)
+            add(.sniff, weight: 5)
             add(.sleep, weight: 4)
         case .sitting:
             add(.sitLookAround, weight: 12)
+            add(.sniff, weight: 5)
             add(.standFromSitting, weight: 7)
             add(.layDown, weight: 8)
             add(.walk, weight: 12)
@@ -1385,7 +1413,7 @@ final class DobermanBehaviorController: ObservableObject {
         behaviorToken: Int,
         animationToken: Int
     ) async throws {
-        try await animationModel.normalizeForBehavior(to: .sitting, token: animationToken)
+        try await animationModel.performBehaviorAnimation(.eatTransition, token: animationToken)
         try ensureCurrent(behaviorToken)
 
         let emptyPlateTask = Task { @MainActor [weak self] in
@@ -1396,7 +1424,11 @@ final class DobermanBehaviorController: ObservableObject {
         }
 
         defer { emptyPlateTask.cancel() }
-        try await animationModel.performBehaviorAnimation(.sitHold, token: animationToken)
+        try await animationModel.loopBehaviorAnimation(
+            .eatLoop,
+            milliseconds: Int(careInteractionDuration * 1000),
+            token: animationToken
+        )
         try await emptyPlateTask.value
     }
 
@@ -1404,7 +1436,7 @@ final class DobermanBehaviorController: ObservableObject {
         behaviorToken: Int,
         animationToken: Int
     ) async throws {
-        try await animationModel.normalizeForBehavior(to: .laying, token: animationToken)
+        try await animationModel.performBehaviorAnimation(.eatTransition, token: animationToken)
         try ensureCurrent(behaviorToken)
 
         let emptyPlateTask = Task { @MainActor [weak self] in
@@ -1415,7 +1447,11 @@ final class DobermanBehaviorController: ObservableObject {
         }
 
         defer { emptyPlateTask.cancel() }
-        try await animationModel.performBehaviorAnimation(.layHold, token: animationToken)
+        try await animationModel.loopBehaviorAnimation(
+            .eatLoop,
+            milliseconds: Int(careInteractionDuration * 1000),
+            token: animationToken
+        )
         try await emptyPlateTask.value
     }
 
@@ -1507,7 +1543,7 @@ final class DobermanBehaviorController: ObservableObject {
             )
         case .standFromLaying:
             try await animationModel.normalizeForBehavior(to: .standing, token: animationToken)
-        case .eat, .drink, .excited, .scratch:
+        case .eat, .drink, .sniff, .excited, .scratch:
             try await executePlaceholder(
                 action,
                 behaviorToken: behaviorToken,
@@ -1813,6 +1849,19 @@ final class DobermanAnimationModel: ObservableObject {
         }
 
         try await playAnimation(animationName, phase: .expandedTimeline, token: token)
+    }
+
+    func loopBehaviorAnimation(
+        _ animationName: DobermanAnimationName,
+        milliseconds: Int,
+        token: Int
+    ) async throws {
+        try await playLoop(
+            animationName,
+            phase: .expandedTimeline,
+            holdMilliseconds: milliseconds,
+            token: token
+        )
     }
 
     func walkForBehavior(toPercent percent: CGFloat, token: Int) async throws {
